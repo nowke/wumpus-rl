@@ -1,0 +1,214 @@
+<html>
+    <head>
+    <title>minisat.py</title>
+    </head>
+    <body>
+    <h3>minisat.py (<a href="../minisat.py">original</a>)</h3>
+    <hr>
+    <pre>
+<span style="color: green; font-style: italic"># minisat.py
+# ----------
+# Licensing Information:
+# Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+# You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+# The Hunt The Wumpus AI project was developed at University of Arizona
+# by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+# This project extends the python code provided by Peter Norvig as part of
+# the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+# see http://aima.cs.berkeley.edu/code.html
+# In particular, the following files come directly from the AIMA python
+# code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+# ('logic.py' has been modified by Clay Morrison in locations with the
+# comment 'CTM')
+# The file ['minisat.py'] implements a slim system call wrapper to the minisat
+# (see http://minisat.se) SAT solver, and is directly based on the satispy
+# python project, see https://github.com/netom/satispy .
+
+</span><span style="color: blue; font-weight: bold">from </span>logic <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">from </span>subprocess <span style="color: blue; font-weight: bold">import </span>call
+<span style="color: blue; font-weight: bold">from </span>tempfile <span style="color: blue; font-weight: bold">import </span>NamedTemporaryFile
+
+<span style="color: green; font-style: italic"># The following is a fairly direct adaptation of the very nice,
+# slim wrapper to minisat provided by https://github.com/netom/satispy
+# I'm not using satispy directly b/c it implements its own cnf rep.
+# so I'm adapting the aima rep to communication with minisat.
+
+</span><span style="color: blue; font-weight: bold">class </span>AIMA_to_Dimacs_Translator<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict <span style="font-weight: bold">= {}
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varobj_dict <span style="font-weight: bold">= {}
+
+    </span><span style="color: blue; font-weight: bold">def </span>varname<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>vo<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>vo<span style="font-weight: bold">]
+
+    </span><span style="color: blue; font-weight: bold">def </span>varobj<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>v<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varobj_dict<span style="font-weight: bold">[</span>v<span style="font-weight: bold">]
+
+    </span><span style="color: blue; font-weight: bold">def </span>to_dimacs_string<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>clauses<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Convert AIMA cnf expression to Dimacs cnf string
+        
+        clauses: list of clauses in AIMA cnf
+        
+        In the converted Cnf there will be only numbers for
+        variable names. The conversion guarantees that the
+        variables will be numbered alphabetically.
+        """
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict <span style="font-weight: bold">= {}
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varobj_dict <span style="font-weight: bold">= {}
+        </span>variables <span style="font-weight: bold">= </span>prop_symbols_from_clause_list<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">)
+        </span>ret <span style="font-weight: bold">= </span><span style="color: red">'p cnf %d %d' </span><span style="font-weight: bold">% (</span>len<span style="font-weight: bold">(</span>variables<span style="font-weight: bold">), </span>len<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">))
+        </span>varis <span style="font-weight: bold">= </span>dict<span style="font-weight: bold">(</span>zip<span style="font-weight: bold">(</span>sorted<span style="font-weight: bold">(</span>variables<span style="font-weight: bold">, </span>key<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">lambda </span>v<span style="font-weight: bold">: </span>v<span style="font-weight: bold">.</span>op<span style="font-weight: bold">),
+                         </span>map<span style="font-weight: bold">(</span>str<span style="font-weight: bold">, </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">, </span>len<span style="font-weight: bold">(</span>variables<span style="font-weight: bold">) + </span><span style="color: red">1</span><span style="font-weight: bold">))))
+        </span><span style="color: blue; font-weight: bold">for </span>var <span style="color: blue; font-weight: bold">in </span>varis<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>var<span style="font-weight: bold">] = </span>varis<span style="font-weight: bold">[</span>var<span style="font-weight: bold">]
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varobj_dict<span style="font-weight: bold">[</span>varis<span style="font-weight: bold">[</span>var<span style="font-weight: bold">]] = </span>var
+
+        <span style="color: blue; font-weight: bold">for </span>clause <span style="color: blue; font-weight: bold">in </span>clauses<span style="font-weight: bold">:
+            </span>ret <span style="font-weight: bold">+= </span><span style="color: red">'\n'
+            </span>dimacs_vlist <span style="font-weight: bold">= []
+            </span><span style="color: blue; font-weight: bold">if </span>clause<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'|'</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">for </span>var <span style="color: blue; font-weight: bold">in </span>clause<span style="font-weight: bold">.</span>args<span style="font-weight: bold">:
+                    </span>dimacs_vlist<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span><span style="color: red">'-' </span><span style="color: blue; font-weight: bold">if </span>var<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~' </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">''</span><span style="font-weight: bold">) </span>\
+                                        <span style="font-weight: bold">+ </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>var<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]
+                                                            </span><span style="color: blue; font-weight: bold">if </span>var<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~' </span><span style="color: blue; font-weight: bold">else </span>var<span style="font-weight: bold">])
+
+                </span>ret <span style="font-weight: bold">+= </span><span style="color: red">' '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>dimacs_vlist<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">elif </span>clause<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">:
+                </span>ret <span style="font-weight: bold">+= </span><span style="color: red">'-' </span><span style="font-weight: bold">+ </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>clause<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]]
+            </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                </span>ret <span style="font-weight: bold">+= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>clause<span style="font-weight: bold">]
+            </span>ret <span style="font-weight: bold">+= </span><span style="color: red">' 0'
+
+        </span><span style="color: blue; font-weight: bold">return </span>ret
+
+    <span style="color: blue; font-weight: bold">def </span>to_dimacs_string_set_variable_value<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>clauses<span style="font-weight: bold">, </span>variable<span style="font-weight: bold">, </span>value<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""
+        Same as above, but returns dimacs for the clauses for SAT test
+             with variable set to value as follows:
+        (1) If value = True, then all clauses containing a literal made true
+             by that value will be removed
+             (because any disjunctive clause with a True literal is SAT)
+        (2) If value = False, then any clauses containing that literal have
+             the literal removed ; if the literal is singular, then return
+             no clauses, indicating that setting to that value is UNSAT
+        """
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict <span style="font-weight: bold">= {}
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varobj_dict <span style="font-weight: bold">= {}
+        </span>variables <span style="font-weight: bold">= </span>prop_symbols_from_clause_list<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>variable <span style="color: blue; font-weight: bold">in </span>variables<span style="font-weight: bold">:
+            </span>variables<span style="font-weight: bold">.</span>remove<span style="font-weight: bold">(</span>variable<span style="font-weight: bold">)
+        </span>varis <span style="font-weight: bold">= </span>dict<span style="font-weight: bold">(</span>zip<span style="font-weight: bold">(</span>sorted<span style="font-weight: bold">(</span>variables<span style="font-weight: bold">, </span>key<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">lambda </span>v<span style="font-weight: bold">: </span>v<span style="font-weight: bold">.</span>op<span style="font-weight: bold">),
+                         </span>map<span style="font-weight: bold">(</span>str<span style="font-weight: bold">, </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">, </span>len<span style="font-weight: bold">(</span>variables<span style="font-weight: bold">) + </span><span style="color: red">1</span><span style="font-weight: bold">))))
+        </span><span style="color: blue; font-weight: bold">for </span>var <span style="color: blue; font-weight: bold">in </span>varis<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>var<span style="font-weight: bold">] = </span>varis<span style="font-weight: bold">[</span>var<span style="font-weight: bold">]
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varobj_dict<span style="font-weight: bold">[</span>varis<span style="font-weight: bold">[</span>var<span style="font-weight: bold">]] = </span>var
+
+        ret_clauses <span style="font-weight: bold">= </span><span style="color: red">''
+        </span>clause_count <span style="font-weight: bold">= </span><span style="color: red">0
+        </span><span style="color: blue; font-weight: bold">for </span>clause <span style="color: blue; font-weight: bold">in </span>clauses<span style="font-weight: bold">:
+            </span>clause_exists <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+            </span>dimacs_vlist <span style="font-weight: bold">= []
+            </span>ret_clause <span style="font-weight: bold">= </span><span style="color: red">''
+            </span><span style="color: blue; font-weight: bold">if </span>clause<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'|'</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">for </span>var <span style="color: blue; font-weight: bold">in </span>clause<span style="font-weight: bold">.</span>args<span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">if </span>literal_name<span style="font-weight: bold">(</span>var<span style="font-weight: bold">) == </span>literal_name<span style="font-weight: bold">(</span>variable<span style="font-weight: bold">):
+                        </span><span style="color: blue; font-weight: bold">if </span>value <span style="color: blue; font-weight: bold">and not </span>var<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~' </span><span style="color: blue; font-weight: bold">or not </span>value <span style="color: blue; font-weight: bold">and </span>var<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">:
+                            </span>clause_exists <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+                    else</span><span style="font-weight: bold">:
+                        </span>dimacs_vlist<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span><span style="color: red">'-' </span><span style="color: blue; font-weight: bold">if </span>var<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~' </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">''</span><span style="font-weight: bold">) </span>\
+                                            <span style="font-weight: bold">+ </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>var<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]
+                                                                </span><span style="color: blue; font-weight: bold">if </span>var<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~' </span><span style="color: blue; font-weight: bold">else </span>var<span style="font-weight: bold">])
+
+                </span><span style="color: blue; font-weight: bold">if </span>clause_exists<span style="font-weight: bold">:
+                    </span>ret_clause <span style="font-weight: bold">+= </span><span style="color: red">' '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>dimacs_vlist<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">elif </span>clause<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">if </span>literal_name<span style="font-weight: bold">(</span>clause<span style="font-weight: bold">) == </span>literal_name<span style="font-weight: bold">(</span>variable<span style="font-weight: bold">):
+                    </span><span style="color: blue; font-weight: bold">if </span>value<span style="font-weight: bold">:
+                        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+                    </span>clause_exists <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+                else</span><span style="font-weight: bold">:
+                    </span>ret_clause <span style="font-weight: bold">+= </span><span style="color: red">'-' </span><span style="font-weight: bold">+ </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>clause<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]]
+            </span><span style="color: blue; font-weight: bold">elif </span>literal_name<span style="font-weight: bold">(</span>clause<span style="font-weight: bold">) == </span>literal_name<span style="font-weight: bold">(</span>variable<span style="font-weight: bold">):
+                </span><span style="color: blue; font-weight: bold">if </span>value<span style="font-weight: bold">:
+                    </span>clause_exists <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+                else</span><span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+            </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                </span>ret_clause <span style="font-weight: bold">+= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varname_dict<span style="font-weight: bold">[</span>clause<span style="font-weight: bold">]
+            </span><span style="color: blue; font-weight: bold">if </span>clause_exists<span style="font-weight: bold">:
+                </span>clause_count <span style="font-weight: bold">+= </span><span style="color: red">1
+                </span>ret_clauses <span style="font-weight: bold">+= </span>ret_clause <span style="font-weight: bold">+ </span><span style="color: red">' 0\n'
+
+        </span>ret_header <span style="font-weight: bold">= </span><span style="color: red">'p cnf %d %d\n' </span><span style="font-weight: bold">% (</span>len<span style="font-weight: bold">(</span>variables<span style="font-weight: bold">), </span>clause_count<span style="font-weight: bold">)
+        </span>ret <span style="font-weight: bold">= </span>ret_header <span style="font-weight: bold">+ </span>ret_clauses
+        <span style="color: blue; font-weight: bold">return </span>ret
+
+<span style="color: blue; font-weight: bold">class </span>Solution<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>success <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">, </span>varmap <span style="font-weight: bold">= {}):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>success <span style="font-weight: bold">= </span>success
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>varmap <span style="font-weight: bold">= </span>varmap
+
+    <span style="color: blue; font-weight: bold">def </span>__repr__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'&lt;mSat.Sol {0}&gt;'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>success<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>__getitem__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>i<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varmap<span style="font-weight: bold">[</span>i<span style="font-weight: bold">]
+
+    </span><span style="color: blue; font-weight: bold">def </span>pprint<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>success
+        <span style="color: blue; font-weight: bold">print </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>varmap
+
+
+<span style="color: blue; font-weight: bold">class </span>Minisat<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+    </span>COMMAND <span style="font-weight: bold">= </span><span style="color: red">'minisat %s %s &gt; /dev/null'
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>command <span style="font-weight: bold">= </span>COMMAND<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>command <span style="font-weight: bold">= </span>command
+
+    <span style="color: blue; font-weight: bold">def </span>solve<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>cnf<span style="font-weight: bold">, </span>variable <span style="font-weight: bold">= </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>value <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">,
+              </span>translator <span style="font-weight: bold">= </span>AIMA_to_Dimacs_Translator<span style="font-weight: bold">):
+
+        </span><span style="color: green; font-style: italic"># if there are no clauses, then can't infer anything, so by default query result is unknown
+        # return Solution with success == None
+        # Note that this could be treated the same as failure.
+        # In PropKB_SAT.ask, this is OK as it will test if sT.success == sF.success
+        #     and therefore will also return None
+        </span><span style="color: blue; font-weight: bold">if not </span>cnf<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>Solution<span style="font-weight: bold">(</span><span style="color: blue">None</span><span style="font-weight: bold">)
+        
+        </span>s <span style="font-weight: bold">= </span>Solution<span style="font-weight: bold">()
+        </span>infile <span style="font-weight: bold">= </span>NamedTemporaryFile<span style="font-weight: bold">(</span>mode<span style="font-weight: bold">=</span><span style="color: red">'w'</span><span style="font-weight: bold">)
+        </span>outfile <span style="font-weight: bold">= </span>NamedTemporaryFile<span style="font-weight: bold">(</span>mode<span style="font-weight: bold">=</span><span style="color: red">'r'</span><span style="font-weight: bold">)
+        </span>io <span style="font-weight: bold">= </span>translator<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span>variable<span style="font-weight: bold">:
+            </span>dimacs <span style="font-weight: bold">= </span>io<span style="font-weight: bold">.</span>to_dimacs_string_set_variable_value<span style="font-weight: bold">(</span>cnf<span style="font-weight: bold">, </span>variable<span style="font-weight: bold">, </span>value<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span>dimacs<span style="font-weight: bold">:
+                </span>infile<span style="font-weight: bold">.</span>write<span style="font-weight: bold">(</span>dimacs<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">return </span>s
+        <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>infile<span style="font-weight: bold">.</span>write<span style="font-weight: bold">(</span>io<span style="font-weight: bold">.</span>to_dimacs_string<span style="font-weight: bold">(</span>cnf<span style="font-weight: bold">))
+        </span>infile<span style="font-weight: bold">.</span>flush<span style="font-weight: bold">()
+        </span>ret <span style="font-weight: bold">= </span>call<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>command <span style="font-weight: bold">% (</span>infile<span style="font-weight: bold">.</span>name<span style="font-weight: bold">, </span>outfile<span style="font-weight: bold">.</span>name<span style="font-weight: bold">), </span>shell<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)
+        </span>infile<span style="font-weight: bold">.</span>close<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span>ret <span style="font-weight: bold">!= </span><span style="color: red">10</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>s
+        s<span style="font-weight: bold">.</span>success <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+        </span>lines <span style="font-weight: bold">= </span>outfile<span style="font-weight: bold">.</span>readlines<span style="font-weight: bold">()[</span><span style="color: red">1</span><span style="font-weight: bold">:]
+        </span><span style="color: blue; font-weight: bold">for </span>line <span style="color: blue; font-weight: bold">in </span>lines<span style="font-weight: bold">:
+            </span>varz <span style="font-weight: bold">= </span>line<span style="font-weight: bold">.</span>split<span style="font-weight: bold">(</span><span style="color: red">' '</span><span style="font-weight: bold">)[:-</span><span style="color: red">1</span><span style="font-weight: bold">]
+            </span><span style="color: blue; font-weight: bold">for </span>v <span style="color: blue; font-weight: bold">in </span>varz<span style="font-weight: bold">:
+                </span>v <span style="font-weight: bold">= </span>v<span style="font-weight: bold">.</span>strip<span style="font-weight: bold">()
+                </span>value <span style="font-weight: bold">= </span>v<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">] != </span><span style="color: red">'-'
+                </span>v <span style="font-weight: bold">= </span>v<span style="font-weight: bold">.</span>lstrip<span style="font-weight: bold">(</span><span style="color: red">'-'</span><span style="font-weight: bold">)
+                </span>vo <span style="font-weight: bold">= </span>io<span style="font-weight: bold">.</span>varobj<span style="font-weight: bold">(</span>v<span style="font-weight: bold">)
+                </span>s<span style="font-weight: bold">.</span>varmap<span style="font-weight: bold">[</span>vo<span style="font-weight: bold">] = </span>value
+
+        outfile<span style="font-weight: bold">.</span>close<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">return </span>s
+
+    </pre>
+    </body>
+    </html>
+    

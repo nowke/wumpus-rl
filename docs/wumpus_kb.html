@@ -1,0 +1,647 @@
+<html>
+    <head>
+    <title>wumpus_kb.py</title>
+    </head>
+    <body>
+    <h3>wumpus_kb.py (<a href="../wumpus_kb.py">original</a>)</h3>
+    <hr>
+    <pre>
+<span style="color: green; font-style: italic"># wumpus_kb.py
+# ------------
+# Licensing Information:
+# Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+# You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+# The Hunt The Wumpus AI project was developed at University of Arizona
+# by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+# This project extends the python code provided by Peter Norvig as part of
+# the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+# see http://aima.cs.berkeley.edu/code.html
+# In particular, the following files come directly from the AIMA python
+# code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+# ('logic.py' has been modified by Clay Morrison in locations with the
+# comment 'CTM')
+# The file ['minisat.py'] implements a slim system call wrapper to the minisat
+# (see http://minisat.se) SAT solver, and is directly based on the satispy
+# python project, see https://github.com/netom/satispy .
+
+</span><span style="color: blue; font-weight: bold">import </span>utils
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Wumpus Propositions
+#-------------------------------------------------------------------------------
+
+### atemporal variables
+
+</span>proposition_bases_atemporal_location <span style="font-weight: bold">= [</span><span style="color: red">'P'</span><span style="font-weight: bold">, </span><span style="color: red">'W'</span><span style="font-weight: bold">, </span><span style="color: red">'S'</span><span style="font-weight: bold">, </span><span style="color: red">'B'</span><span style="font-weight: bold">]
+
+</span><span style="color: blue; font-weight: bold">def </span>pit_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">):
+    </span><span style="color: red">"There is a Pit at &lt;x&gt;,&lt;y&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'P{0}_{1}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>wumpus_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">):
+    </span><span style="color: red">"There is a Wumpus at &lt;x&gt;,&lt;y&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'W{0}_{1}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>stench_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">):
+    </span><span style="color: red">"There is a Stench at &lt;x&gt;,&lt;y&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'S{0}_{1}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>breeze_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">):
+    </span><span style="color: red">"There is a Breeze at &lt;x&gt;,&lt;y&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'B{0}_{1}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">### fluents (every proposition who's truth depends on time)
+
+</span>proposition_bases_perceptual_fluents <span style="font-weight: bold">= [</span><span style="color: red">'Stench'</span><span style="font-weight: bold">, </span><span style="color: red">'Breeze'</span><span style="font-weight: bold">, </span><span style="color: red">'Glitter'</span><span style="font-weight: bold">, </span><span style="color: red">'Bump'</span><span style="font-weight: bold">, </span><span style="color: red">'Scream'</span><span style="font-weight: bold">]
+
+</span><span style="color: blue; font-weight: bold">def </span>percept_stench_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"A Stench is perceived at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Stench{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>percept_breeze_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"A Breeze is perceived at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Breeze{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>percept_glitter_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"A Glitter is perceived at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Glitter{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>percept_bump_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"A Bump is perceived at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Bump{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>percept_scream_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"A Scream is perceived at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Scream{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+
+</span>proposition_bases_location_fluents <span style="font-weight: bold">= [</span><span style="color: red">'OK'</span><span style="font-weight: bold">, </span><span style="color: red">'L'</span><span style="font-weight: bold">]
+
+</span><span style="color: blue; font-weight: bold">def </span>state_OK_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"Location &lt;x&gt;,&lt;y&gt; is OK at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'OK{0}_{1}_{2}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>state_loc_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"At Location &lt;x&gt;,&lt;y&gt; at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'L{0}_{1}_{2}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>loc_proposition_to_tuple<span style="font-weight: bold">(</span>loc_prop<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Utility to convert location propositions to location (x,y) tuples
+    Used by HybridWumpusAgent for internal bookkeeping.
+    """
+    </span>parts <span style="font-weight: bold">= </span>loc_prop<span style="font-weight: bold">.</span>split<span style="font-weight: bold">(</span><span style="color: red">'_'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>int<span style="font-weight: bold">(</span>parts<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">][</span><span style="color: red">1</span><span style="font-weight: bold">:]), </span>int<span style="font-weight: bold">(</span>parts<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">]))
+
+</span>proposition_bases_state_fluents <span style="font-weight: bold">= [</span><span style="color: red">'HeadingNorth'</span><span style="font-weight: bold">, </span><span style="color: red">'HeadingEast'</span><span style="font-weight: bold">,
+                                   </span><span style="color: red">'HeadingSouth'</span><span style="font-weight: bold">, </span><span style="color: red">'HeadingWest'</span><span style="font-weight: bold">,
+                                   </span><span style="color: red">'HaveArrow'</span><span style="font-weight: bold">, </span><span style="color: red">'WumpusAlive'</span><span style="font-weight: bold">]
+
+</span><span style="color: blue; font-weight: bold">def </span>state_heading_north_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"Heading North at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'HeadingNorth{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>state_heading_east_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"Heading East at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'HeadingEast{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>state_heading_south_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"Heading South at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'HeadingSouth{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>state_heading_west_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"Heading West at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'HeadingWest{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>state_have_arrow_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"Have Arrow at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'HaveArrow{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>state_wumpus_alive_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: red">"Wumpus is Alive at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'WumpusAlive{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+
+</span>proposition_bases_actions <span style="font-weight: bold">= [</span><span style="color: red">'Forward'</span><span style="font-weight: bold">, </span><span style="color: red">'Grab'</span><span style="font-weight: bold">, </span><span style="color: red">'Shoot'</span><span style="font-weight: bold">, </span><span style="color: red">'Climb'</span><span style="font-weight: bold">,
+                             </span><span style="color: red">'TurnLeft'</span><span style="font-weight: bold">, </span><span style="color: red">'TurnRight'</span><span style="font-weight: bold">, </span><span style="color: red">'Wait'</span><span style="font-weight: bold">]
+
+</span><span style="color: blue; font-weight: bold">def </span>action_forward_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Action Forward executed at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span><span style="color: red">'Forward{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">if </span>t <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">'Forward'</span><span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>action_grab_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Action Grab executed at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span><span style="color: red">'Grab{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">if </span>t <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">'Grab'</span><span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>action_shoot_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Action Shoot executed at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span><span style="color: red">'Shoot{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">if </span>t <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">'Shoot'</span><span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>action_climb_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Action Climb executed at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span><span style="color: red">'Climb{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">if </span>t <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">'Climb'</span><span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>action_turn_left_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Action Turn Left executed at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span><span style="color: red">'TurnLeft{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">if </span>t <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">'TurnLeft'</span><span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>action_turn_right_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Action Turn Right executed at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span><span style="color: red">'TurnRight{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">if </span>t <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">'TurnRight'</span><span style="font-weight: bold">)
+</span><span style="color: blue; font-weight: bold">def </span>action_wait_str<span style="font-weight: bold">(</span>t<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Action Wait executed at time &lt;t&gt;"
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span><span style="color: red">'Wait{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">if </span>t <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">else </span><span style="color: red">'Wait'</span><span style="font-weight: bold">)
+
+
+</span><span style="color: blue; font-weight: bold">def </span>add_time_stamp<span style="font-weight: bold">(</span>prop<span style="font-weight: bold">, </span>t<span style="font-weight: bold">): </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'{0}{1}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>prop<span style="font-weight: bold">, </span>t<span style="font-weight: bold">)
+
+</span>proposition_bases_all <span style="font-weight: bold">= [</span>proposition_bases_atemporal_location<span style="font-weight: bold">,
+                         </span>proposition_bases_perceptual_fluents<span style="font-weight: bold">,
+                         </span>proposition_bases_location_fluents<span style="font-weight: bold">,
+                         </span>proposition_bases_state_fluents<span style="font-weight: bold">,
+                         </span>proposition_bases_actions<span style="font-weight: bold">]
+
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Axiom Generator: Current Percept Sentence
+#-------------------------------------------------------------------------------
+
+#def make_percept_sentence(t, tvec):
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_percept_sentence<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>tvec<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Asserts that each percept proposition is True or False at time t.
+
+    t := time
+    tvec := a boolean (True/False) vector with entries corresponding to
+            percept propositions, in this order:
+                (&lt;stench&gt;,&lt;breeze&gt;,&lt;glitter&gt;,&lt;bump&gt;,&lt;scream&gt;)
+
+    Example:
+        Input:  [False, True, False, False, True]
+        Output: '~Stench0 &amp; Breeze0 &amp; ~Glitter0 &amp; ~Bump0 &amp; Scream0'
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Axiom Generators: Initial Axioms
+#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_initial_location_assertions<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that there is no Pit and no Wumpus in the location
+
+    x,y := the location
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_pits_and_breezes<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that Breezes (atemporal) are only found in locations where
+    there are one or more Pits in a neighboring location (or the same location!)
+
+    x,y := the location
+    xmin, xmax, ymin, ymax := the bounds of the environment; you use these
+           variables to 'prune' any neighboring locations that are outside
+           of the environment (and therefore are walls, so can't have Pits).
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_pit_and_breeze_axioms<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span>axioms <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>ymin<span style="font-weight: bold">, </span>ymax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_pits_and_breezes<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>utils<span style="font-weight: bold">.</span>all_empty_strings<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">):
+        </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">(</span><span style="color: red">'axiom_generator_pits_and_breezes'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>axioms
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_wumpus_and_stench<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that Stenches (atemporal) are only found in locations where
+    there are one or more Wumpi in a neighboring location (or the same location!)
+
+    (Don't try to assert here that there is only one Wumpus;
+    we'll handle that separately)
+
+    x,y := the location
+    xmin, xmax, ymin, ymax := the bounds of the environment; you use these
+           variables to 'prune' any neighboring locations that are outside
+           of the environment (and therefore are walls, so can't have Wumpi).
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_wumpus_and_stench_axioms<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span>axioms <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>ymin<span style="font-weight: bold">, </span>ymax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_wumpus_and_stench<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>utils<span style="font-weight: bold">.</span>all_empty_strings<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">):
+        </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">(</span><span style="color: red">'axiom_generator_wumpus_and_stench'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>axioms
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_at_least_one_wumpus<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that there is at least one Wumpus.
+
+    xmin, xmax, ymin, ymax := the bounds of the environment.
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_at_most_one_wumpus<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that there is at at most one Wumpus.
+
+    xmin, xmax, ymin, ymax := the bounds of the environment.
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_only_in_one_location<span style="font-weight: bold">(</span>xi<span style="font-weight: bold">, </span>yi<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">, </span>t <span style="font-weight: bold">= </span><span style="color: red">0</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that the Agent can only be in one (the current xi,yi) location at time t.
+
+    xi,yi := the current location.
+    xmin, xmax, ymin, ymax := the bounds of the environment.
+    t := time; default=0
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_only_one_heading<span style="font-weight: bold">(</span>heading <span style="font-weight: bold">= </span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>t <span style="font-weight: bold">= </span><span style="color: red">0</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that Agent can only head in one direction at a time.
+
+    heading := string indicating heading; default='north';
+               will be one of: 'north', 'east', 'south', 'west'
+    t := time; default=0
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_have_arrow_and_wumpus_alive<span style="font-weight: bold">(</span>t <span style="font-weight: bold">= </span><span style="color: red">0</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that Agent has the arrow and the Wumpus is alive at time t.
+
+    t := time; default=0
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+
+<span style="color: blue; font-weight: bold">def </span>initial_wumpus_axioms<span style="font-weight: bold">(</span>xi<span style="font-weight: bold">, </span>yi<span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">, </span>heading<span style="font-weight: bold">=</span><span style="color: red">'east'</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Generate all of the initial wumpus axioms
+    
+    xi,yi = initial location
+    width,height = dimensions of world
+    heading = str representation of the initial agent heading
+    """
+    </span>axioms <span style="font-weight: bold">= [</span>axiom_generator_initial_location_assertions<span style="font-weight: bold">(</span>xi<span style="font-weight: bold">, </span>yi<span style="font-weight: bold">)]
+    </span>axioms<span style="font-weight: bold">.</span>extend<span style="font-weight: bold">(</span>generate_pit_and_breeze_axioms<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span>height<span style="font-weight: bold">))
+    </span>axioms<span style="font-weight: bold">.</span>extend<span style="font-weight: bold">(</span>generate_wumpus_and_stench_axioms<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span>height<span style="font-weight: bold">))
+    
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_at_least_one_wumpus<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span>height<span style="font-weight: bold">))
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_at_most_one_wumpus<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span>height<span style="font-weight: bold">))
+
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_only_in_one_location<span style="font-weight: bold">(</span>xi<span style="font-weight: bold">, </span>yi<span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span>height<span style="font-weight: bold">))
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_only_one_heading<span style="font-weight: bold">(</span>heading<span style="font-weight: bold">))
+
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_have_arrow_and_wumpus_alive<span style="font-weight: bold">())
+    
+    </span><span style="color: blue; font-weight: bold">return </span>axioms
+
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Axiom Generators: Temporal Axioms (added at each time step)
+#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_location_OK<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the conditions under which a location is safe for the Agent.
+    (Hint: Are Wumpi always dangerous?)
+
+    x,y := location
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_square_OK_axioms<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span>axioms <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>ymin<span style="font-weight: bold">, </span>ymax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_location_OK<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>utils<span style="font-weight: bold">.</span>all_empty_strings<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">):
+        </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">(</span><span style="color: red">'axiom_generator_location_OK'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>filter<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>s<span style="font-weight: bold">: </span>s <span style="font-weight: bold">!= </span><span style="color: red">''</span><span style="font-weight: bold">, </span>axioms<span style="font-weight: bold">)
+
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Connection between breeze / stench percepts and atemporal location properties
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_breeze_percept_and_location_property<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that when in a location at time t, then perceiving a breeze
+    at that time (a percept) means that the location is breezy (atemporal)
+
+    x,y := location
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_breeze_percept_and_location_axioms<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span>axioms <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>ymin<span style="font-weight: bold">, </span>ymax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_breeze_percept_and_location_property<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>utils<span style="font-weight: bold">.</span>all_empty_strings<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">):
+        </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">(</span><span style="color: red">'axiom_generator_breeze_percept_and_location_property'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>filter<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>s<span style="font-weight: bold">: </span>s <span style="font-weight: bold">!= </span><span style="color: red">''</span><span style="font-weight: bold">, </span>axioms<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_stench_percept_and_location_property<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that when in a location at time t, then perceiving a stench
+    at that time (a percept) means that the location has a stench (atemporal)
+
+    x,y := location
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_stench_percept_and_location_axioms<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span>axioms <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>xmin<span style="font-weight: bold">, </span>xmax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>ymin<span style="font-weight: bold">, </span>ymax <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_stench_percept_and_location_property<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>t<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>utils<span style="font-weight: bold">.</span>all_empty_strings<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">):
+        </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">(</span><span style="color: red">'axiom_generator_stench_percept_and_location_property'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>filter<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>s<span style="font-weight: bold">: </span>s <span style="font-weight: bold">!= </span><span style="color: red">''</span><span style="font-weight: bold">, </span>axioms<span style="font-weight: bold">)
+
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Transition model: Successor-State Axioms (SSA's)
+# Avoid the frame problem(s): don't write axioms about actions, write axioms about
+# fluents!  That is, write successor-state axioms as opposed to effect and frame
+# axioms
+#
+# The general successor-state axioms pattern (where F is a fluent):
+#   F^{t+1} &lt;=&gt; (Action(s)ThatCause_F^t) | (F^t &amp; ~Action(s)ThatCauseNot_F^t)
+
+# NOTE: this is very expensive in terms of generating many (~170 per axiom) CNF clauses!
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_at_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the condidtions at time t under which the agent is in
+    a particular location (state_loc_str: L) at time t+1, following
+    the successor-state axiom pattern.
+
+    See Section 7. of AIMA.  However...
+    NOTE: the book's version of this class of axioms is not complete
+          for the version in Project 3.
+    
+    x,y := location
+    t := time
+    xmin, xmax, ymin, ymax := the bounds of the environment.
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_at_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">, </span>heading<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    The full at_location SSA converts to a fairly large CNF, which in
+    turn causes the KB to grow very fast, slowing overall inference.
+    We therefore need to restric generating these axioms as much as possible.
+    This fn generates the at_location SSA only for the current location and
+    the location the agent is currently facing (in case the agent moves
+    forward on the next turn).
+    This is sufficient for tracking the current location, which will be the
+    single L location that evaluates to True; however, the other locations
+    may be False or Unknown.
+    """
+    </span>axioms <span style="font-weight: bold">= [</span>axiom_generator_at_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">)]
+    </span><span style="color: blue; font-weight: bold">if </span>heading <span style="font-weight: bold">== </span><span style="color: red">'west' </span><span style="color: blue; font-weight: bold">and </span>x <span style="font-weight: bold">- </span><span style="color: red">1 </span><span style="font-weight: bold">&gt;= </span>xmin<span style="font-weight: bold">:
+        </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_at_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>x<span style="font-weight: bold">-</span><span style="color: red">1</span><span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>heading <span style="font-weight: bold">== </span><span style="color: red">'east' </span><span style="color: blue; font-weight: bold">and </span>x <span style="font-weight: bold">+ </span><span style="color: red">1 </span><span style="font-weight: bold">&lt;= </span>xmax<span style="font-weight: bold">:
+        </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_at_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>x<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>heading <span style="font-weight: bold">== </span><span style="color: red">'south' </span><span style="color: blue; font-weight: bold">and </span>y <span style="font-weight: bold">- </span><span style="color: red">1 </span><span style="font-weight: bold">&gt;= </span>ymin<span style="font-weight: bold">:
+        </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_at_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">-</span><span style="color: red">1</span><span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>heading <span style="font-weight: bold">== </span><span style="color: red">'north' </span><span style="color: blue; font-weight: bold">and </span>y <span style="font-weight: bold">+ </span><span style="color: red">1 </span><span style="font-weight: bold">&lt;= </span>ymax<span style="font-weight: bold">:
+        </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_at_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">, </span>xmin<span style="font-weight: bold">, </span>xmax<span style="font-weight: bold">, </span>ymin<span style="font-weight: bold">, </span>ymax<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">if </span>utils<span style="font-weight: bold">.</span>all_empty_strings<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">):
+        </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">(</span><span style="color: red">'axiom_generator_at_location_ssa'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>filter<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>s<span style="font-weight: bold">: </span>s <span style="font-weight: bold">!= </span><span style="color: red">''</span><span style="font-weight: bold">, </span>axioms<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#----------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_have_arrow_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the conditions at time t under which the Agent
+    has the arrow at time t+1
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_wumpus_alive_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the conditions at time t under which the Wumpus
+    is known to be alive at time t+1
+
+    (NOTE: If this axiom is implemented in the standard way, it is expected
+    that it will take one time step after the Wumpus dies before the Agent
+    can infer that the Wumpus is actually dead.)
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: green; font-style: italic">#----------------------------------
+
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_north_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the conditions at time t under which the
+    Agent heading will be North at time t+1
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_east_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the conditions at time t under which the
+    Agent heading will be East at time t+1
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_south_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the conditions at time t under which the
+    Agent heading will be South at time t+1
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_west_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert the conditions at time t under which the
+    Agent heading will be West at time t+1
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_heading_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Generates all of the heading SSAs.
+    """
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>axiom_generator_heading_north_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">),
+            </span>axiom_generator_heading_east_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">),
+            </span>axiom_generator_heading_south_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">),
+            </span>axiom_generator_heading_west_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)]
+
+</span><span style="color: blue; font-weight: bold">def </span>generate_non_location_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Generate all non-location-based SSAs
+    """
+    </span>axioms <span style="font-weight: bold">= [] </span><span style="color: green; font-style: italic"># all_state_loc_ssa(t, xmin, xmax, ymin, ymax)
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_have_arrow_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">))
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_wumpus_alive_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">))
+    </span>axioms<span style="font-weight: bold">.</span>extend<span style="font-weight: bold">(</span>generate_heading_ssa<span style="font-weight: bold">(</span>t<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">return </span>filter<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>s<span style="font-weight: bold">: </span>s <span style="font-weight: bold">!= </span><span style="color: red">''</span><span style="font-weight: bold">, </span>axioms<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#----------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_only_north<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that when heading is North, the agent is
+    not heading any other direction.
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_only_east<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that when heading is East, the agent is
+    not heading any other direction.
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_only_south<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that when heading is South, the agent is
+    not heading any other direction.
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>axiom_generator_heading_only_west<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that when heading is West, the agent is
+    not heading any other direction.
+
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+<span style="color: blue; font-weight: bold">def </span>generate_heading_only_one_direction_axioms<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>axiom_generator_heading_only_north<span style="font-weight: bold">(</span>t<span style="font-weight: bold">),
+            </span>axiom_generator_heading_only_east<span style="font-weight: bold">(</span>t<span style="font-weight: bold">),
+            </span>axiom_generator_heading_only_south<span style="font-weight: bold">(</span>t<span style="font-weight: bold">),
+            </span>axiom_generator_heading_only_west<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)]
+
+
+</span><span style="color: blue; font-weight: bold">def </span>axiom_generator_only_one_action_axioms<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Assert that only one axion can be executed at a time.
+    
+    t := time
+    """
+    </span>axiom_str <span style="font-weight: bold">= </span><span style="color: red">''
+    "*** YOUR CODE HERE ***"
+    </span><span style="color: green; font-style: italic"># Comment or delete the next line once this function has been implemented.
+    </span>utils<span style="font-weight: bold">.</span>print_not_implemented<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">return </span>axiom_str
+
+
+<span style="color: blue; font-weight: bold">def </span>generate_mutually_exclusive_axioms<span style="font-weight: bold">(</span>t<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Generate all time-based mutually exclusive axioms.
+    """
+    </span>axioms <span style="font-weight: bold">= []
+    
+    </span><span style="color: green; font-style: italic"># must be t+1 to constrain which direction could be heading _next_
+    </span>axioms<span style="font-weight: bold">.</span>extend<span style="font-weight: bold">(</span>generate_heading_only_one_direction_axioms<span style="font-weight: bold">(</span>t <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">))
+
+    </span><span style="color: green; font-style: italic"># actions occur in current time, after percept
+    </span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>axiom_generator_only_one_action_axioms<span style="font-weight: bold">(</span>t<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">return </span>filter<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>s<span style="font-weight: bold">: </span>s <span style="font-weight: bold">!= </span><span style="color: red">''</span><span style="font-weight: bold">, </span>axioms<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+</span>
+    </pre>
+    </body>
+    </html>
+    

@@ -1,0 +1,1271 @@
+<html>
+    <head>
+    <title>logic.py</title>
+    </head>
+    <body>
+    <h3>logic.py (<a href="../logic.py">original</a>)</h3>
+    <hr>
+    <pre>
+<span style="color: green; font-style: italic"># logic.py
+# --------
+# Licensing Information:
+# Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+# You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+# The Hunt The Wumpus AI project was developed at University of Arizona
+# by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+# This project extends the python code provided by Peter Norvig as part of
+# the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+# see http://aima.cs.berkeley.edu/code.html
+# In particular, the following files come directly from the AIMA python
+# code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+# ('logic.py' has been modified by Clay Morrison in locations with the
+# comment 'CTM')
+# The file ['minisat.py'] implements a slim system call wrapper to the minisat
+# (see http://minisat.se) SAT solver, and is directly based on the satispy
+# python project, see https://github.com/netom/satispy .
+
+</span><span style="color: darkred">"""Representations and Inference for Logic (Chapters 7-9, 12)
+
+Covers both Propositional and First-Order Logic. First we have four
+important data types:
+
+    KB            Abstract class holds a knowledge base of logical expressions
+    KB_Agent      Abstract class subclasses agents.Agent
+    Expr          A logical expression
+    substitution  Implemented as a dictionary of var:value pairs, {x:1, y:x}
+
+Be careful: some functions take an Expr as argument, and some take a KB.
+Then we implement various functions for doing logical inference:
+
+    pl_true          Evaluate a propositional logical sentence in a model
+    tt_entails       Say if a statement is entailed by a KB
+    pl_resolution    Do resolution on propositional sentences
+    dpll_satisfiable See if a propositional sentence is satisfiable
+    WalkSAT          (not yet implemented)
+
+And a few other functions:
+
+    to_cnf           Convert to conjunctive normal form
+    unify            Do unification of two FOL sentences
+    diff, simp       Symbolic differentiation and simplification
+"""
+
+</span><span style="color: blue; font-weight: bold">import </span>itertools<span style="font-weight: bold">, </span>re
+<span style="color: blue; font-weight: bold">import </span>agents
+<span style="color: blue; font-weight: bold">from </span>utils <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>KB<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""A knowledge base to which you can tell and ask sentences.
+    To create a KB, first subclass this class and implement
+    tell, ask_generator, and retract.  Why ask_generator instead of ask?
+    The book is a bit vague on what ask means --
+    For a Propositional Logic KB, ask(P &amp; Q) returns True or False, but for an
+    FOL KB, something like ask(Brother(x, y)) might return many substitutions
+    such as {x: Cain, y: Abel}, {x: Abel, y: Cain}, {x: George, y: Jeb}, etc.
+    So ask_generator generates these one at a time, and ask either returns the
+    first one or returns False."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>tell<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: red">"Add the sentence to the KB."
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>ask<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return a substitution that makes the query true, or,
+        failing that, return False."""
+        </span><span style="color: blue; font-weight: bold">for </span>result <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>ask_generator<span style="font-weight: bold">(</span>query<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>result
+        <span style="color: blue; font-weight: bold">return False
+
+    def </span>ask_generator<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+        </span><span style="color: red">"Yield all the substitutions that make query true."
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>retract<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: red">"Remove sentence from the KB."
+        </span>abstract
+
+
+<span style="color: blue; font-weight: bold">class </span>PropKB<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">):
+    </span><span style="color: red">"A KB for propositional logic. Inefficient, with no indexing."
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses <span style="font-weight: bold">= []
+        </span><span style="color: blue; font-weight: bold">if </span>sentence<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>tell<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: red">"Add the sentence's clauses to the KB."
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">.</span>extend<span style="font-weight: bold">(</span>conjuncts<span style="font-weight: bold">(</span>to_cnf<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)))
+
+    </span><span style="color: blue; font-weight: bold">def </span>ask_generator<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+        </span><span style="color: red">"Yield the empty substitution if KB implies query; else nothing."
+        </span><span style="color: blue; font-weight: bold">if </span>tt_entails<span style="font-weight: bold">(</span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">, *</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">), </span>query<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">yield </span><span style="font-weight: bold">{}
+
+    </span><span style="color: blue; font-weight: bold">def </span>retract<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: red">"Remove the sentence's clauses from the KB."
+        </span><span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span>conjuncts<span style="font-weight: bold">(</span>to_cnf<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)):
+            </span><span style="color: blue; font-weight: bold">if </span>c <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">:
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">.</span>remove<span style="font-weight: bold">(</span>c<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">def </span>KB_AgentProgram<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""A generic logical knowledge-based agent program. [Fig. 7.1]"""
+    </span>steps <span style="font-weight: bold">= </span>itertools<span style="font-weight: bold">.</span>count<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+        </span>t <span style="font-weight: bold">= </span>steps<span style="font-weight: bold">.</span>next<span style="font-weight: bold">()
+        </span>KB<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>make_percept_sentence<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">, </span>t<span style="font-weight: bold">))
+        </span>action <span style="font-weight: bold">= </span>KB<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>make_action_query<span style="font-weight: bold">(</span>t<span style="font-weight: bold">))
+        </span>KB<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>make_action_sentence<span style="font-weight: bold">(</span>action<span style="font-weight: bold">, </span>t<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">return </span>action
+
+    <span style="color: blue; font-weight: bold">def </span>make_percept_sentence<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>percept<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">"Percept"</span><span style="font-weight: bold">)(</span>percept<span style="font-weight: bold">, </span>t<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>make_action_query<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>expr<span style="font-weight: bold">(</span><span style="color: red">"ShouldDo(action, %d)" </span><span style="font-weight: bold">% </span>t<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>make_action_sentence<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>action<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">"Did"</span><span style="font-weight: bold">)(</span>action<span style="font-weight: bold">[</span>expr<span style="font-weight: bold">(</span><span style="color: red">'action'</span><span style="font-weight: bold">)], </span>t<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">return </span>program
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>Expr<span style="font-weight: bold">:
+    </span><span style="color: darkred">"""A symbolic mathematical expression.  We use this class for logical
+    expressions, and for terms within logical expressions. In general, an
+    Expr has an op (operator) and a list of args.  The op can be:
+      Null-ary (no args) op:
+        A number, representing the number itself.  (e.g. Expr(42) =&gt; 42)
+        A symbol, representing a variable or constant (e.g. Expr('F') =&gt; F)
+      Unary (1 arg) op:
+        '~', '-', representing NOT, negation (e.g. Expr('~', Expr('P')) =&gt; ~P)
+      Binary (2 arg) op:
+        '&gt;&gt;', '&lt;&lt;', representing forward and backward implication
+        '+', '-', '*', '/', '**', representing arithmetic operators
+        '&lt;', '&gt;', '&gt;=', '&lt;=', representing comparison operators
+        '&lt;=&gt;', '^', representing logical equality and XOR
+      N-ary (0 or more args) op:
+        '&amp;', '|', representing conjunction and disjunction
+        A symbol, representing a function term or FOL proposition
+
+    Exprs can be constructed with operator overloading: if x and y are Exprs,
+    then so are x + y and x &amp; y, etc.  Also, if F and x are Exprs, then so is
+    F(x); it works by overloading the __call__ method of the Expr F.  Note
+    that in the Expr that is created by F(x), the op is the str 'F', not the
+    Expr F.   See http://www.python.org/doc/current/ref/specialnames.html
+    to learn more about operator overloading in Python.
+
+    WARNING: x == y and x != y are NOT Exprs.  The reason is that we want
+    to write code that tests 'if x == y:' and if x == y were the same
+    as Expr('==', x, y), then the result would always be true; not what a
+    programmer would expect.  But we still need to form Exprs representing
+    equalities and disequalities.  We concentrate on logical equality (or
+    equivalence) and logical disequality (or XOR).  You have 3 choices:
+        (1) Expr('&lt;=&gt;', x, y) and Expr('^', x, y)
+            Note that ^ is bitwose XOR in Python (and Java and C++)
+        (2) expr('x &lt;=&gt; y') and expr('x =/= y').
+            See the doc string for the function expr.
+        (3) (x % y) and (x ^ y).
+            It is very ugly to have (x % y) mean (x &lt;=&gt; y), but we need
+            SOME operator to make (2) work, and this seems the best choice.
+
+    WARNING: if x is an Expr, then so is x + 1, because the int 1 gets
+    coerced to an Expr by the constructor.  But 1 + x is an error, because
+    1 doesn't know how to add an Expr.  (Adding an __radd__ method to Expr
+    wouldn't help, because int.__add__ is still called first.) Therefore,
+    you should use Expr(1) + x instead, or ONE + x, or expr('1 + x').
+    """
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>op<span style="font-weight: bold">, *</span>args<span style="font-weight: bold">):
+        </span><span style="color: red">"Op is a string or number; args are Exprs (or are coerced to Exprs)."
+        </span><span style="color: blue; font-weight: bold">assert </span>isinstance<span style="font-weight: bold">(</span>op<span style="font-weight: bold">, </span>str<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">or </span><span style="font-weight: bold">(</span>isnumber<span style="font-weight: bold">(</span>op<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and not </span>args<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op <span style="font-weight: bold">= </span>num_or_str<span style="font-weight: bold">(</span>op<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args <span style="font-weight: bold">= </span>map<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">, </span>args<span style="font-weight: bold">) </span><span style="color: green; font-style: italic">## Coerce args to Exprs
+
+    </span><span style="color: blue; font-weight: bold">def </span>__call__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, *</span>args<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Self must be a symbol with no args, such as Expr('F').  Create a new
+        Expr with 'F' as op and the args as arguments."""
+        </span><span style="color: blue; font-weight: bold">assert </span>is_symbol<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args
+        <span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op<span style="font-weight: bold">, *</span>args<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>__repr__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Show something like 'P' or 'P(x, y)', or '~P' or '(P | Q | R)'"
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args<span style="font-weight: bold">:         </span><span style="color: green; font-style: italic"># Constant or proposition with arity 0
+            </span><span style="color: blue; font-weight: bold">return </span>str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>is_symbol<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op<span style="font-weight: bold">):  </span><span style="color: green; font-style: italic"># Functional or propositional operator
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'%s(%s)' </span><span style="font-weight: bold">% (</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op<span style="font-weight: bold">, </span><span style="color: red">', '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span>repr<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args<span style="font-weight: bold">)))
+        </span><span style="color: blue; font-weight: bold">elif </span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args<span style="font-weight: bold">) == </span><span style="color: red">1</span><span style="font-weight: bold">: </span><span style="color: green; font-style: italic"># Prefix operator
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op <span style="font-weight: bold">+ </span>repr<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">])
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:                     </span><span style="color: green; font-style: italic"># Infix operator
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'(%s)' </span><span style="font-weight: bold">% (</span><span style="color: red">' '</span><span style="font-weight: bold">+</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op<span style="font-weight: bold">+</span><span style="color: red">' '</span><span style="font-weight: bold">).</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span>repr<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>__eq__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""x and y are equal iff their ops and args are equal."""
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>other <span style="color: blue; font-weight: bold">is </span><span style="color: blue">self</span><span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">or </span><span style="font-weight: bold">(</span>isinstance<span style="font-weight: bold">(</span>other<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">and </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span>other<span style="font-weight: bold">.</span>op <span style="color: blue; font-weight: bold">and </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args <span style="font-weight: bold">== </span>other<span style="font-weight: bold">.</span>args<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>__ne__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>__eq__<span style="font-weight: bold">(</span>other<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>__hash__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Need a hash method so Exprs can live in dicts."
+        </span><span style="color: blue; font-weight: bold">return </span>hash<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>op<span style="font-weight: bold">) ^ </span>hash<span style="font-weight: bold">(</span>tuple<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>args<span style="font-weight: bold">))
+
+    </span><span style="color: green; font-style: italic"># See http://www.python.org/doc/current/lib/module-operator.html
+    # Not implemented: not, abs, pos, concat, contains, *item, *slice
+    </span><span style="color: blue; font-weight: bold">def </span>__lt__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):     </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&lt;'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__le__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):     </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&lt;='</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__ge__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):     </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&gt;='</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__gt__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):     </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&gt;'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__add__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'+'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__sub__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'-'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__and__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__div__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'/'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__truediv__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):</span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'/'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__invert__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'~'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__lshift__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">): </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&lt;&lt;'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__rshift__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">): </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&gt;&gt;'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__mul__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'*'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__neg__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):           </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'-'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__or__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):     </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'|'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__pow__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'**'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__xor__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'^'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">def </span>__mod__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&lt;=&gt;'</span><span style="font-weight: bold">,  </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">)
+
+
+
+</span><span style="color: blue; font-weight: bold">def </span>expr<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Create an Expr representing a logic expression by parsing the input
+    string. Symbols and numbers are automatically converted to Exprs.
+    In addition you can use alternative spellings of these operators:
+      'x ==&gt; y'   parses as   (x &gt;&gt; y)    # Implication
+      'x &lt;== y'   parses as   (x &lt;&lt; y)    # Reverse implication
+      'x &lt;=&gt; y'   parses as   (x % y)     # Logical equivalence
+      'x =/= y'   parses as   (x ^ y)     # Logical disequality (xor)
+    But BE CAREFUL; precedence of implication is wrong. expr('P &amp; Q ==&gt; R &amp; S')
+    is ((P &amp; (Q &gt;&gt; R)) &amp; S); so you must use expr('(P &amp; Q) ==&gt; (R &amp; S)').
+    &gt;&gt;&gt; expr('P &lt;=&gt; Q(1)')
+    (P &lt;=&gt; Q(1))
+    &gt;&gt;&gt; expr('P &amp; Q | ~R(x, F(x))')
+    ((P &amp; Q) | ~R(x, F(x)))
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>isinstance<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">): </span><span style="color: blue; font-weight: bold">return </span>s
+    <span style="color: blue; font-weight: bold">if </span>isnumber<span style="font-weight: bold">(</span>s<span style="font-weight: bold">): </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+    </span><span style="color: green; font-style: italic">## Replace the alternative spellings of operators with canonical spellings
+    </span>s <span style="font-weight: bold">= </span>s<span style="font-weight: bold">.</span>replace<span style="font-weight: bold">(</span><span style="color: red">'==&gt;'</span><span style="font-weight: bold">, </span><span style="color: red">'&gt;&gt;'</span><span style="font-weight: bold">).</span>replace<span style="font-weight: bold">(</span><span style="color: red">'&lt;=='</span><span style="font-weight: bold">, </span><span style="color: red">'&lt;&lt;'</span><span style="font-weight: bold">)
+    </span>s <span style="font-weight: bold">= </span>s<span style="font-weight: bold">.</span>replace<span style="font-weight: bold">(</span><span style="color: red">'&lt;=&gt;'</span><span style="font-weight: bold">, </span><span style="color: red">'%'</span><span style="font-weight: bold">).</span>replace<span style="font-weight: bold">(</span><span style="color: red">'=/='</span><span style="font-weight: bold">, </span><span style="color: red">'^'</span><span style="font-weight: bold">)
+    </span><span style="color: green; font-style: italic">## Replace a symbol or number, such as 'P' with 'Expr("P")'
+    </span>s <span style="font-weight: bold">= </span>re<span style="font-weight: bold">.</span>sub<span style="font-weight: bold">(</span><span style="color: red">r'([a-zA-Z0-9_.]+)'</span><span style="font-weight: bold">, </span><span style="color: red">r'Expr("\1")'</span><span style="font-weight: bold">, </span>s<span style="font-weight: bold">)
+    </span><span style="color: green; font-style: italic">## Now eval the string.  (A security hole; do not use with an adversary.)
+    </span><span style="color: blue; font-weight: bold">return </span>eval<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, {</span><span style="color: red">'Expr'</span><span style="font-weight: bold">:</span>Expr<span style="font-weight: bold">})
+
+</span><span style="color: blue; font-weight: bold">def </span>is_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: red">"A string s is a symbol if it starts with an alphabetic char."
+    </span><span style="color: blue; font-weight: bold">return </span>isinstance<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>str<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>s<span style="font-weight: bold">[:</span><span style="color: red">1</span><span style="font-weight: bold">].</span>isalpha<span style="font-weight: bold">()
+
+</span><span style="color: blue; font-weight: bold">def </span>is_var_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: red">"A logic variable symbol is an initial-lowercase string."
+    </span><span style="color: blue; font-weight: bold">return </span>is_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>s<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">].</span>islower<span style="font-weight: bold">()
+
+</span><span style="color: blue; font-weight: bold">def </span>is_prop_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""A proposition logic symbol is an initial-uppercase string other than
+    TRUE or FALSE."""
+    </span><span style="color: blue; font-weight: bold">return </span>is_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>s<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">].</span>isupper<span style="font-weight: bold">() </span><span style="color: blue; font-weight: bold">and </span>s <span style="font-weight: bold">!= </span><span style="color: red">'TRUE' </span><span style="color: blue; font-weight: bold">and </span>s <span style="font-weight: bold">!= </span><span style="color: red">'FALSE'
+
+</span><span style="color: blue; font-weight: bold">def </span>variables<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return a set of the variables in expression s.
+    &gt;&gt;&gt; ppset(variables(F(x, A, y)))
+    set([x, y])
+    &gt;&gt;&gt; ppset(variables(F(G(x), z)))
+    set([x, z])
+    &gt;&gt;&gt; ppset(variables(expr('F(x, x) &amp; G(x, y) &amp; H(y, z) &amp; R(A, z, z)')))
+    set([x, y, z])
+    """
+    </span>result <span style="font-weight: bold">= </span>set<span style="font-weight: bold">([])
+    </span><span style="color: blue; font-weight: bold">def </span>walk<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>is_variable<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+            </span>result<span style="font-weight: bold">.</span>add<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">for </span>arg <span style="color: blue; font-weight: bold">in </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">:
+                </span>walk<span style="font-weight: bold">(</span>arg<span style="font-weight: bold">)
+    </span>walk<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>result
+
+<span style="color: blue; font-weight: bold">def </span>is_definite_clause<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""returns True for exprs s of the form A &amp; B &amp; ... &amp; C ==&gt; D,
+    where all literals are positive.  In clause form, this is
+    ~A | ~B | ... | ~C | D, where exactly one clause is positive.
+    &gt;&gt;&gt; is_definite_clause(expr('Farmer(Mac)'))
+    True
+    &gt;&gt;&gt; is_definite_clause(expr('~Farmer(Mac)'))
+    False
+    &gt;&gt;&gt; is_definite_clause(expr('(Farmer(f) &amp; Rabbit(r)) ==&gt; Hates(f, r)'))
+    True
+    &gt;&gt;&gt; is_definite_clause(expr('(Farmer(f) &amp; ~Rabbit(r)) ==&gt; Hates(f, r)'))
+    False
+    &gt;&gt;&gt; is_definite_clause(expr('(Farmer(f) | Rabbit(r)) ==&gt; Hates(f, r)'))
+    False
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>is_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>op<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return True
+    elif </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&gt;&gt;'</span><span style="font-weight: bold">:
+        </span>antecedent<span style="font-weight: bold">, </span>consequent <span style="font-weight: bold">= </span>s<span style="font-weight: bold">.</span>args
+        <span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>is_symbol<span style="font-weight: bold">(</span>consequent<span style="font-weight: bold">.</span>op<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">and </span>every<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>arg<span style="font-weight: bold">: </span>is_symbol<span style="font-weight: bold">(</span>arg<span style="font-weight: bold">.</span>op<span style="font-weight: bold">), </span>conjuncts<span style="font-weight: bold">(</span>antecedent<span style="font-weight: bold">)))
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return False
+
+def </span>parse_definite_clause<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: red">"Return the antecedents and the consequent of a definite clause."
+    </span><span style="color: blue; font-weight: bold">assert </span>is_definite_clause<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>is_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>op<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[], </span>s
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span>antecedent<span style="font-weight: bold">, </span>consequent <span style="font-weight: bold">= </span>s<span style="font-weight: bold">.</span>args
+        <span style="color: blue; font-weight: bold">return </span>conjuncts<span style="font-weight: bold">(</span>antecedent<span style="font-weight: bold">), </span>consequent
+
+<span style="color: green; font-style: italic">## Useful constant Exprs used in examples and code:
+</span>TRUE<span style="font-weight: bold">, </span>FALSE<span style="font-weight: bold">, </span>ZERO<span style="font-weight: bold">, </span>ONE<span style="font-weight: bold">, </span>TWO <span style="font-weight: bold">= </span>map<span style="font-weight: bold">(</span>Expr<span style="font-weight: bold">, [</span><span style="color: red">'TRUE'</span><span style="font-weight: bold">, </span><span style="color: red">'FALSE'</span><span style="font-weight: bold">, </span><span style="color: red">0</span><span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span><span style="color: red">2</span><span style="font-weight: bold">])
+</span>A<span style="font-weight: bold">, </span>B<span style="font-weight: bold">, </span>C<span style="font-weight: bold">, </span>F<span style="font-weight: bold">, </span>G<span style="font-weight: bold">, </span>P<span style="font-weight: bold">, </span>Q<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>z  <span style="font-weight: bold">= </span>map<span style="font-weight: bold">(</span>Expr<span style="font-weight: bold">, </span><span style="color: red">'ABCFGPQxyz'</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">def </span>tt_entails<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">, </span>alpha<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Does kb entail the sentence alpha? Use truth tables. For propositional
+    kb's and sentences. [Fig. 7.10]
+    &gt;&gt;&gt; tt_entails(expr('P &amp; Q'), expr('Q'))
+    True
+    """
+    </span><span style="color: blue; font-weight: bold">assert not </span>variables<span style="font-weight: bold">(</span>alpha<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>tt_check_all<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">, </span>alpha<span style="font-weight: bold">, </span>prop_symbols<span style="font-weight: bold">(</span>kb <span style="font-weight: bold">&amp; </span>alpha<span style="font-weight: bold">), {})
+
+</span><span style="color: blue; font-weight: bold">def </span>tt_check_all<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">, </span>alpha<span style="font-weight: bold">, </span>symbols<span style="font-weight: bold">, </span>model<span style="font-weight: bold">):
+    </span><span style="color: red">"Auxiliary routine to implement tt_entails."
+    </span><span style="color: blue; font-weight: bold">if not </span>symbols<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>pl_true<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">, </span>model<span style="font-weight: bold">):
+            </span>result <span style="font-weight: bold">= </span>pl_true<span style="font-weight: bold">(</span>alpha<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">assert </span>result <span style="color: blue; font-weight: bold">in </span><span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">return </span>result
+        <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return True
+    else</span><span style="font-weight: bold">:
+        </span>P<span style="font-weight: bold">, </span>rest <span style="font-weight: bold">= </span>symbols<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>symbols<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">:]
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>tt_check_all<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">, </span>alpha<span style="font-weight: bold">, </span>rest<span style="font-weight: bold">, </span>extend<span style="font-weight: bold">(</span>model<span style="font-weight: bold">, </span>P<span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)) </span><span style="color: blue; font-weight: bold">and
+                </span>tt_check_all<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">, </span>alpha<span style="font-weight: bold">, </span>rest<span style="font-weight: bold">, </span>extend<span style="font-weight: bold">(</span>model<span style="font-weight: bold">, </span>P<span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)))
+
+</span><span style="color: blue; font-weight: bold">def </span>prop_symbols<span style="font-weight: bold">(</span>x<span style="font-weight: bold">):
+    </span><span style="color: red">"Return a list of all propositional symbols in x."
+    </span><span style="color: blue; font-weight: bold">if not </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[]
+    </span><span style="color: blue; font-weight: bold">elif </span>is_prop_symbol<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>x<span style="font-weight: bold">]
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>list<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>symbol <span style="color: blue; font-weight: bold">for </span>arg <span style="color: blue; font-weight: bold">in </span>x<span style="font-weight: bold">.</span>args
+                        <span style="color: blue; font-weight: bold">for </span>symbol <span style="color: blue; font-weight: bold">in </span>prop_symbols<span style="font-weight: bold">(</span>arg<span style="font-weight: bold">)))
+
+</span><span style="color: blue; font-weight: bold">def </span>tt_true<span style="font-weight: bold">(</span>alpha<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Is the propositional sentence alpha a tautology? (alpha will be
+    coerced to an expr.)
+    &gt;&gt;&gt; tt_true(expr("(P &gt;&gt; Q) &lt;=&gt; (~P | Q)"))
+    True
+    """
+    </span><span style="color: blue; font-weight: bold">return </span>tt_entails<span style="font-weight: bold">(</span>TRUE<span style="font-weight: bold">, </span>expr<span style="font-weight: bold">(</span>alpha<span style="font-weight: bold">))
+
+</span><span style="color: blue; font-weight: bold">def </span>pl_true<span style="font-weight: bold">(</span>exp<span style="font-weight: bold">, </span>model<span style="font-weight: bold">={}):
+    </span><span style="color: darkred">"""Return True if the propositional logic expression is true in the model,
+    and False if it is false. If the model does not specify the value for
+    every proposition, this may return None to indicate 'not obvious';
+    this may happen even when the expression is tautological."""
+    </span>op<span style="font-weight: bold">, </span>args <span style="font-weight: bold">= </span>exp<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, </span>exp<span style="font-weight: bold">.</span>args
+    <span style="color: blue; font-weight: bold">if </span>exp <span style="font-weight: bold">== </span>TRUE<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return True
+    elif </span>exp <span style="font-weight: bold">== </span>FALSE<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return False
+    elif </span>is_prop_symbol<span style="font-weight: bold">(</span>op<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>model<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>exp<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">:
+        </span>p <span style="font-weight: bold">= </span>pl_true<span style="font-weight: bold">(</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>model<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>p <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return not </span>p
+    <span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'|'</span><span style="font-weight: bold">:
+        </span>result <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+        for </span>arg <span style="color: blue; font-weight: bold">in </span>args<span style="font-weight: bold">:
+            </span>p <span style="font-weight: bold">= </span>pl_true<span style="font-weight: bold">(</span>arg<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span>p <span style="color: blue; font-weight: bold">is True</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return True
+            if </span>p <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span>result <span style="font-weight: bold">= </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">return </span>result
+    <span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'&amp;'</span><span style="font-weight: bold">:
+        </span>result <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+        for </span>arg <span style="color: blue; font-weight: bold">in </span>args<span style="font-weight: bold">:
+            </span>p <span style="font-weight: bold">= </span>pl_true<span style="font-weight: bold">(</span>arg<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span>p <span style="color: blue; font-weight: bold">is False</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return False
+            if </span>p <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span>result <span style="font-weight: bold">= </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">return </span>result
+    p<span style="font-weight: bold">, </span>q <span style="font-weight: bold">= </span>args
+    <span style="color: blue; font-weight: bold">if </span>op <span style="font-weight: bold">== </span><span style="color: red">'&gt;&gt;'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>pl_true<span style="font-weight: bold">(~</span>p <span style="font-weight: bold">| </span>q<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'&lt;&lt;'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>pl_true<span style="font-weight: bold">(</span>p <span style="font-weight: bold">| ~</span>q<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+    </span>pt <span style="font-weight: bold">= </span>pl_true<span style="font-weight: bold">(</span>p<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>pt <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+    </span>qt <span style="font-weight: bold">= </span>pl_true<span style="font-weight: bold">(</span>q<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>qt <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+    </span><span style="color: blue; font-weight: bold">if </span>op <span style="font-weight: bold">== </span><span style="color: red">'&lt;=&gt;'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>pt <span style="font-weight: bold">== </span>qt
+    <span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'^'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>pt <span style="font-weight: bold">!= </span>qt
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">raise </span>ValueError<span style="font-weight: bold">, </span><span style="color: red">"illegal operator in logic expression" </span><span style="font-weight: bold">+ </span>str<span style="font-weight: bold">(</span>exp<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+## Convert to Conjunctive Normal Form (CNF)
+
+</span><span style="color: blue; font-weight: bold">def </span>to_cnf<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Convert a propositional logical sentence s to conjunctive normal form.
+    That is, to the form ((A | ~B | ...) &amp; (B | C | ...) &amp; ...) [p. 253]
+    &gt;&gt;&gt; to_cnf("~(B|C)")
+    (~B &amp; ~C)
+    &gt;&gt;&gt; to_cnf("B &lt;=&gt; (P1|P2)")
+    ((~P1 | B) &amp; (~P2 | B) &amp; (P1 | P2 | ~B))
+    &gt;&gt;&gt; to_cnf("a | (b &amp; c) | d")
+    ((b | a | d) &amp; (c | a | d))
+    &gt;&gt;&gt; to_cnf("A &amp; (B | (D &amp; E))")
+    (A &amp; (D | B) &amp; (E | B))
+    &gt;&gt;&gt; to_cnf("A | (B | (C | (D &amp; E)))")
+    ((D | A | B | C) &amp; (E | A | B | C))
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>isinstance<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>str<span style="font-weight: bold">): </span>s <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+    </span>s <span style="font-weight: bold">= </span>eliminate_implications<span style="font-weight: bold">(</span>s<span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># Steps 1, 2 from p. 253
+    </span>s <span style="font-weight: bold">= </span>move_not_inwards<span style="font-weight: bold">(</span>s<span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># Step 3
+    </span><span style="color: blue; font-weight: bold">return </span>distribute_and_over_or<span style="font-weight: bold">(</span>s<span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># Step 4
+
+</span><span style="color: blue; font-weight: bold">def </span>eliminate_implications<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Change &gt;&gt;, &lt;&lt;, and &lt;=&gt; into &amp;, |, and ~. That is, return an Expr
+    that is equivalent to s, but has only &amp;, |, and ~ as logical operators.
+    &gt;&gt;&gt; eliminate_implications(A &gt;&gt; (~B &lt;&lt; C))
+    ((~B | ~C) | ~A)
+    &gt;&gt;&gt; eliminate_implications(A ^ B)
+    ((A &amp; ~B) | (~A &amp; B))
+    """
+    </span><span style="color: blue; font-weight: bold">if not </span>s<span style="font-weight: bold">.</span>args <span style="color: blue; font-weight: bold">or </span>is_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>op<span style="font-weight: bold">): </span><span style="color: blue; font-weight: bold">return </span>s     <span style="color: green; font-style: italic">## (Atoms are unchanged.)
+    </span>args <span style="font-weight: bold">= </span>map<span style="font-weight: bold">(</span>eliminate_implications<span style="font-weight: bold">, </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">)
+    </span>a<span style="font-weight: bold">, </span>b <span style="font-weight: bold">= </span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>args<span style="font-weight: bold">[-</span><span style="color: red">1</span><span style="font-weight: bold">]
+    </span><span style="color: blue; font-weight: bold">if </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&gt;&gt;'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>b <span style="font-weight: bold">| ~</span>a<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&lt;&lt;'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>a <span style="font-weight: bold">| ~</span>b<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&lt;=&gt;'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>a <span style="font-weight: bold">| ~</span>b<span style="font-weight: bold">) &amp; (</span>b <span style="font-weight: bold">| ~</span>a<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'^'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">assert </span>len<span style="font-weight: bold">(</span>args<span style="font-weight: bold">) == </span><span style="color: red">2   </span><span style="color: green; font-style: italic">## TODO: relax this restriction
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>a <span style="font-weight: bold">&amp; ~</span>b<span style="font-weight: bold">) | (~</span>a <span style="font-weight: bold">&amp; </span>b<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">assert </span>s<span style="font-weight: bold">.</span>op <span style="color: blue; font-weight: bold">in </span><span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">, </span><span style="color: red">'|'</span><span style="font-weight: bold">, </span><span style="color: red">'~'</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, *</span>args<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>move_not_inwards<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Rewrite sentence s by moving negation sign inward.
+    &gt;&gt;&gt; move_not_inwards(~(A | B))
+    (~A &amp; ~B)
+    &gt;&gt;&gt; move_not_inwards(~(A &amp; B))
+    (~A | ~B)
+    &gt;&gt;&gt; move_not_inwards(~(~(A | ~B) | ~~C))
+    ((A | ~B) &amp; ~C)
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">:
+        </span>NOT <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">lambda </span>b<span style="font-weight: bold">: </span>move_not_inwards<span style="font-weight: bold">(~</span>b<span style="font-weight: bold">)
+        </span>a <span style="font-weight: bold">= </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]
+        </span><span style="color: blue; font-weight: bold">if </span>a<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>move_not_inwards<span style="font-weight: bold">(</span>a<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]) </span><span style="color: green; font-style: italic"># ~~A ==&gt; A
+        </span><span style="color: blue; font-weight: bold">if </span>a<span style="font-weight: bold">.</span>op <span style="font-weight: bold">==</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>associate<span style="font-weight: bold">(</span><span style="color: red">'|'</span><span style="font-weight: bold">, </span>map<span style="font-weight: bold">(</span>NOT<span style="font-weight: bold">, </span>a<span style="font-weight: bold">.</span>args<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span>a<span style="font-weight: bold">.</span>op <span style="font-weight: bold">==</span><span style="color: red">'|'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>associate<span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">, </span>map<span style="font-weight: bold">(</span>NOT<span style="font-weight: bold">, </span>a<span style="font-weight: bold">.</span>args<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">return </span>s
+    <span style="color: blue; font-weight: bold">elif </span>is_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>op<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">or not </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>s
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, *</span>map<span style="font-weight: bold">(</span>move_not_inwards<span style="font-weight: bold">, </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">))
+
+</span><span style="color: blue; font-weight: bold">def </span>distribute_and_over_or<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Given a sentence s consisting of conjunctions and disjunctions
+    of literals, return an equivalent sentence in CNF.
+    &gt;&gt;&gt; distribute_and_over_or((A &amp; B) | C)
+    ((A | C) &amp; (B | C))
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'|'</span><span style="font-weight: bold">:
+        </span>s <span style="font-weight: bold">= </span>associate<span style="font-weight: bold">(</span><span style="color: red">'|'</span><span style="font-weight: bold">, </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">!= </span><span style="color: red">'|'</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>distribute_and_over_or<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">) == </span><span style="color: red">0</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>FALSE
+        <span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">) == </span><span style="color: red">1</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>distribute_and_over_or<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">])
+        </span>conj <span style="font-weight: bold">= </span>find_if<span style="font-weight: bold">((</span><span style="color: blue; font-weight: bold">lambda </span>d<span style="font-weight: bold">: </span>d<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&amp;'</span><span style="font-weight: bold">), </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>conj<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>s
+        others <span style="font-weight: bold">= [</span>a <span style="color: blue; font-weight: bold">for </span>a <span style="color: blue; font-weight: bold">in </span>s<span style="font-weight: bold">.</span>args <span style="color: blue; font-weight: bold">if </span>a <span style="color: blue; font-weight: bold">is not </span>conj<span style="font-weight: bold">]
+        </span>rest <span style="font-weight: bold">= </span>associate<span style="font-weight: bold">(</span><span style="color: red">'|'</span><span style="font-weight: bold">, </span>others<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>associate<span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">, [</span>distribute_and_over_or<span style="font-weight: bold">(</span>c<span style="font-weight: bold">|</span>rest<span style="font-weight: bold">)
+                               </span><span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span>conj<span style="font-weight: bold">.</span>args<span style="font-weight: bold">])
+    </span><span style="color: blue; font-weight: bold">elif </span>s<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&amp;'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>associate<span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">, </span>map<span style="font-weight: bold">(</span>distribute_and_over_or<span style="font-weight: bold">, </span>s<span style="font-weight: bold">.</span>args<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>s
+
+<span style="color: blue; font-weight: bold">def </span>associate<span style="font-weight: bold">(</span>op<span style="font-weight: bold">, </span>args<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Given an associative op, return an expression with the same
+    meaning as Expr(op, *args), but flattened -- that is, with nested
+    instances of the same op promoted to the top level.
+    &gt;&gt;&gt; associate('&amp;', [(A&amp;B),(B|C),(B&amp;C)])
+    (A &amp; B &amp; (B | C) &amp; B &amp; C)
+    &gt;&gt;&gt; associate('|', [A|(B|(C|(A&amp;B)))])
+    (A | B | C | (A &amp; B))
+    """
+    </span>args <span style="font-weight: bold">= </span>dissociate<span style="font-weight: bold">(</span>op<span style="font-weight: bold">, </span>args<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>args<span style="font-weight: bold">) == </span><span style="color: red">0</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>_op_identity<span style="font-weight: bold">[</span>op<span style="font-weight: bold">]
+    </span><span style="color: blue; font-weight: bold">elif </span>len<span style="font-weight: bold">(</span>args<span style="font-weight: bold">) == </span><span style="color: red">1</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span>op<span style="font-weight: bold">, *</span>args<span style="font-weight: bold">)
+
+</span>_op_identity <span style="font-weight: bold">= {</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">:</span>TRUE<span style="font-weight: bold">, </span><span style="color: red">'|'</span><span style="font-weight: bold">:</span>FALSE<span style="font-weight: bold">, </span><span style="color: red">'+'</span><span style="font-weight: bold">:</span>ZERO<span style="font-weight: bold">, </span><span style="color: red">'*'</span><span style="font-weight: bold">:</span>ONE<span style="font-weight: bold">}
+
+</span><span style="color: blue; font-weight: bold">def </span>dissociate<span style="font-weight: bold">(</span>op<span style="font-weight: bold">, </span>args<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Given an associative op, return a flattened list result such
+    that Expr(op, *result) means the same as Expr(op, *args)."""
+    </span>result <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">def </span>collect<span style="font-weight: bold">(</span>subargs<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>arg <span style="color: blue; font-weight: bold">in </span>subargs<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span>arg<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span>op<span style="font-weight: bold">: </span>collect<span style="font-weight: bold">(</span>arg<span style="font-weight: bold">.</span>args<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">: </span>result<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>arg<span style="font-weight: bold">)
+    </span>collect<span style="font-weight: bold">(</span>args<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>result
+
+<span style="color: blue; font-weight: bold">def </span>conjuncts<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return a list of the conjuncts in the sentence s.
+    &gt;&gt;&gt; conjuncts(A &amp; B)
+    [A, B]
+    &gt;&gt;&gt; conjuncts(A | B)
+    [(A | B)]
+    """
+    </span><span style="color: blue; font-weight: bold">return </span>dissociate<span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">, [</span>s<span style="font-weight: bold">])
+
+</span><span style="color: blue; font-weight: bold">def </span>disjuncts<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return a list of the disjuncts in the sentence s.
+    &gt;&gt;&gt; disjuncts(A | B)
+    [A, B]
+    &gt;&gt;&gt; disjuncts(A &amp; B)
+    [(A &amp; B)]
+    """
+    </span><span style="color: blue; font-weight: bold">return </span>dissociate<span style="font-weight: bold">(</span><span style="color: red">'|'</span><span style="font-weight: bold">, [</span>s<span style="font-weight: bold">])
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">def </span>pl_resolution<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>alpha<span style="font-weight: bold">):
+    </span><span style="color: red">"Propositional-logic resolution: say if alpha follows from KB. [Fig. 7.12]"
+    </span>clauses <span style="font-weight: bold">= </span>KB<span style="font-weight: bold">.</span>clauses <span style="font-weight: bold">+ </span>conjuncts<span style="font-weight: bold">(</span>to_cnf<span style="font-weight: bold">(~</span>alpha<span style="font-weight: bold">))
+    </span>new <span style="font-weight: bold">= </span>set<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">while True</span><span style="font-weight: bold">:
+        </span>n <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">)
+
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'num_clauses:'</span><span style="font-weight: bold">, </span>n
+
+        pairs <span style="font-weight: bold">= [(</span>clauses<span style="font-weight: bold">[</span>i<span style="font-weight: bold">], </span>clauses<span style="font-weight: bold">[</span>j<span style="font-weight: bold">])
+                 </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>n<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>j <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>i<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">, </span>n<span style="font-weight: bold">)]
+
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'pairs:'</span><span style="font-weight: bold">, </span>len<span style="font-weight: bold">(</span>pairs<span style="font-weight: bold">)
+
+        </span>pairs_count <span style="font-weight: bold">= </span><span style="color: red">0
+        </span><span style="color: blue; font-weight: bold">for </span><span style="font-weight: bold">(</span>ci<span style="font-weight: bold">, </span>cj<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">in </span>pairs<span style="font-weight: bold">:
+            </span>pairs_count <span style="font-weight: bold">+= </span><span style="color: red">1
+            </span><span style="color: blue; font-weight: bold">if </span>pairs_count <span style="font-weight: bold">% </span><span style="color: red">10000 </span><span style="font-weight: bold">== </span><span style="color: red">0</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'   '</span><span style="font-weight: bold">, </span>pairs_count
+            resolvents <span style="font-weight: bold">= </span>pl_resolve<span style="font-weight: bold">(</span>ci<span style="font-weight: bold">, </span>cj<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span>FALSE <span style="color: blue; font-weight: bold">in </span>resolvents<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return True
+            </span>new <span style="font-weight: bold">= </span>new<span style="font-weight: bold">.</span>union<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>resolvents<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span>new<span style="font-weight: bold">.</span>issubset<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">)): </span><span style="color: blue; font-weight: bold">return False
+
+        print </span><span style="color: red">'new:'</span><span style="font-weight: bold">, </span>len<span style="font-weight: bold">(</span>new<span style="font-weight: bold">)
+        
+        </span><span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span>new<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span>c <span style="color: blue; font-weight: bold">not in </span>clauses<span style="font-weight: bold">: </span>clauses<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>c<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>pl_resolve<span style="font-weight: bold">(</span>ci<span style="font-weight: bold">, </span>cj<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return all clauses that can be obtained by resolving clauses ci and cj.
+    &gt;&gt;&gt; for res in pl_resolve(to_cnf(A|B|C), to_cnf(~B|~C|F)):
+    ...    ppset(disjuncts(res))
+    set([A, C, F, ~C])
+    set([A, B, F, ~B])
+    """
+    </span>clauses <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">for </span>di <span style="color: blue; font-weight: bold">in </span>disjuncts<span style="font-weight: bold">(</span>ci<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>dj <span style="color: blue; font-weight: bold">in </span>disjuncts<span style="font-weight: bold">(</span>cj<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">if </span>di <span style="font-weight: bold">== ~</span>dj <span style="color: blue; font-weight: bold">or </span><span style="font-weight: bold">~</span>di <span style="font-weight: bold">== </span>dj<span style="font-weight: bold">:
+                </span>dnew <span style="font-weight: bold">= </span>unique<span style="font-weight: bold">(</span>removeall<span style="font-weight: bold">(</span>di<span style="font-weight: bold">, </span>disjuncts<span style="font-weight: bold">(</span>ci<span style="font-weight: bold">)) +
+                              </span>removeall<span style="font-weight: bold">(</span>dj<span style="font-weight: bold">, </span>disjuncts<span style="font-weight: bold">(</span>cj<span style="font-weight: bold">)))
+                </span>clauses<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>associate<span style="font-weight: bold">(</span><span style="color: red">'|'</span><span style="font-weight: bold">, </span>dnew<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">return </span>clauses
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>PropDefiniteKB<span style="font-weight: bold">(</span>PropKB<span style="font-weight: bold">):
+    </span><span style="color: red">"A KB of propositional definite clauses."
+
+    </span><span style="color: blue; font-weight: bold">def </span>tell<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: red">"Add a definite clause to this KB."
+        </span><span style="color: blue; font-weight: bold">assert </span>is_definite_clause<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">), </span><span style="color: red">"Must be definite clause"
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>ask_generator<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+        </span><span style="color: red">"Yield the empty substitution if KB implies query; else nothing."
+        </span><span style="color: blue; font-weight: bold">if </span>pl_fc_entails<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">yield </span><span style="font-weight: bold">{}
+
+    </span><span style="color: blue; font-weight: bold">def </span>retract<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">.</span>remove<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>clauses_with_premise<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>p<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return a list of the clauses in KB that have p in their premise.
+        This could be cached away for O(1) speed, but we'll recompute it."""
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>c <span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses
+                <span style="color: blue; font-weight: bold">if </span>c<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&gt;&gt;' </span><span style="color: blue; font-weight: bold">and </span>p <span style="color: blue; font-weight: bold">in </span>conjuncts<span style="font-weight: bold">(</span>c<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">])]
+
+</span><span style="color: blue; font-weight: bold">def </span>pl_fc_entails<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>q<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Use forward chaining to see if a PropDefiniteKB entails symbol q.
+    [Fig. 7.15]
+    &gt;&gt;&gt; pl_fc_entails(Fig[7,15], expr('Q'))
+    True
+    """
+    </span>count <span style="font-weight: bold">= </span>dict<span style="font-weight: bold">([(</span>c<span style="font-weight: bold">, </span>len<span style="font-weight: bold">(</span>conjuncts<span style="font-weight: bold">(</span>c<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]))) </span><span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span>KB<span style="font-weight: bold">.</span>clauses
+                                                 <span style="color: blue; font-weight: bold">if </span>c<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'&gt;&gt;'</span><span style="font-weight: bold">])
+    </span>inferred <span style="font-weight: bold">= </span>DefaultDict<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+    </span>agenda <span style="font-weight: bold">= [</span>s <span style="color: blue; font-weight: bold">for </span>s <span style="color: blue; font-weight: bold">in </span>KB<span style="font-weight: bold">.</span>clauses <span style="color: blue; font-weight: bold">if </span>is_prop_symbol<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>op<span style="font-weight: bold">)]
+    </span><span style="color: blue; font-weight: bold">while </span>agenda<span style="font-weight: bold">:
+        </span>p <span style="font-weight: bold">= </span>agenda<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span>p <span style="font-weight: bold">== </span>q<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return True
+        if not </span>inferred<span style="font-weight: bold">[</span>p<span style="font-weight: bold">]:
+            </span>inferred<span style="font-weight: bold">[</span>p<span style="font-weight: bold">] = </span><span style="color: blue; font-weight: bold">True
+            for </span>c <span style="color: blue; font-weight: bold">in </span>KB<span style="font-weight: bold">.</span>clauses_with_premise<span style="font-weight: bold">(</span>p<span style="font-weight: bold">):
+                </span>count<span style="font-weight: bold">[</span>c<span style="font-weight: bold">] -= </span><span style="color: red">1
+                </span><span style="color: blue; font-weight: bold">if </span>count<span style="font-weight: bold">[</span>c<span style="font-weight: bold">] == </span><span style="color: red">0</span><span style="font-weight: bold">:
+                    </span>agenda<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>c<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">])
+    </span><span style="color: blue; font-weight: bold">return False
+
+</span><span style="color: green; font-style: italic">## Wumpus World example [Fig. 7.13]
+</span>Fig<span style="font-weight: bold">[</span><span style="color: red">7</span><span style="font-weight: bold">,</span><span style="color: red">13</span><span style="font-weight: bold">] = </span>expr<span style="font-weight: bold">(</span><span style="color: red">"(B11 &lt;=&gt; (P12 | P21))  &amp;  ~B11"</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">## Propositional Logic Forward Chaining example [Fig. 7.16]
+</span>Fig<span style="font-weight: bold">[</span><span style="color: red">7</span><span style="font-weight: bold">,</span><span style="color: red">15</span><span style="font-weight: bold">] = </span>PropDefiniteKB<span style="font-weight: bold">()
+</span><span style="color: blue; font-weight: bold">for </span>s <span style="color: blue; font-weight: bold">in </span><span style="color: red">"P&gt;&gt;Q   (L&amp;M)&gt;&gt;P   (B&amp;L)&gt;&gt;M   (A&amp;P)&gt;&gt;L   (A&amp;B)&gt;&gt;L   A   B"</span><span style="font-weight: bold">.</span>split<span style="font-weight: bold">():
+    </span>Fig<span style="font-weight: bold">[</span><span style="color: red">7</span><span style="font-weight: bold">,</span><span style="color: red">15</span><span style="font-weight: bold">].</span>tell<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span>s<span style="font-weight: bold">))
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+# DPLL-Satisfiable [Fig. 7.17]
+
+</span><span style="color: blue; font-weight: bold">def </span>dpll_satisfiable<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Check satisfiability of a propositional sentence.
+    This differs from the book code in two ways: (1) it returns a model
+    rather than True when it succeeds; this is more useful. (2) The
+    function find_pure_symbol is passed a list of unknown clauses, rather
+    than a list of all clauses and the model; this is more efficient.
+    &gt;&gt;&gt; ppsubst(dpll_satisfiable(A&amp;~B))
+    {A: True, B: False}
+    &gt;&gt;&gt; dpll_satisfiable(P&amp;~P)
+    False
+    """
+    </span>clauses <span style="font-weight: bold">= </span>conjuncts<span style="font-weight: bold">(</span>to_cnf<span style="font-weight: bold">(</span>s<span style="font-weight: bold">))
+    </span>symbols <span style="font-weight: bold">= </span>prop_symbols<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'  &gt;&gt;&gt; Got clauses ('</span><span style="font-weight: bold">,</span>len<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">),</span><span style="color: red">') and symbols ('</span><span style="font-weight: bold">, </span>len<span style="font-weight: bold">(</span>symbols<span style="font-weight: bold">), </span><span style="color: red">')'
+    </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'  &gt;&gt;&gt; starting dpll proper'
+    
+    </span><span style="color: blue; font-weight: bold">return </span>dpll<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>symbols<span style="font-weight: bold">, {})
+
+</span><span style="color: blue; font-weight: bold">def </span>dpll<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>symbols<span style="font-weight: bold">, </span>model<span style="font-weight: bold">):
+    </span><span style="color: red">"See if the clauses are true in a partial model."
+    </span>unknown_clauses <span style="font-weight: bold">= [] </span><span style="color: green; font-style: italic">## clauses with an unknown truth value
+    </span><span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span>clauses<span style="font-weight: bold">:
+        </span>val <span style="font-weight: bold">=  </span>pl_true<span style="font-weight: bold">(</span>c<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>val <span style="font-weight: bold">== </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return False
+        if </span>val <span style="font-weight: bold">!= </span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">:
+            </span>unknown_clauses<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>c<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if not </span>unknown_clauses<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>model
+    P<span style="font-weight: bold">, </span>value <span style="font-weight: bold">= </span>find_pure_symbol<span style="font-weight: bold">(</span>symbols<span style="font-weight: bold">, </span>unknown_clauses<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>P<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>dpll<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>removeall<span style="font-weight: bold">(</span>P<span style="font-weight: bold">, </span>symbols<span style="font-weight: bold">), </span>extend<span style="font-weight: bold">(</span>model<span style="font-weight: bold">, </span>P<span style="font-weight: bold">, </span>value<span style="font-weight: bold">))
+    </span>P<span style="font-weight: bold">, </span>value <span style="font-weight: bold">= </span>find_unit_clause<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>model<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>P<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>dpll<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>removeall<span style="font-weight: bold">(</span>P<span style="font-weight: bold">, </span>symbols<span style="font-weight: bold">), </span>extend<span style="font-weight: bold">(</span>model<span style="font-weight: bold">, </span>P<span style="font-weight: bold">, </span>value<span style="font-weight: bold">))
+    </span>P<span style="font-weight: bold">, </span>symbols <span style="font-weight: bold">= </span>symbols<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>symbols<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">:]
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>dpll<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>symbols<span style="font-weight: bold">, </span>extend<span style="font-weight: bold">(</span>model<span style="font-weight: bold">, </span>P<span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)) </span><span style="color: blue; font-weight: bold">or
+            </span>dpll<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>symbols<span style="font-weight: bold">, </span>extend<span style="font-weight: bold">(</span>model<span style="font-weight: bold">, </span>P<span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)))
+
+</span><span style="color: blue; font-weight: bold">def </span>find_pure_symbol<span style="font-weight: bold">(</span>symbols<span style="font-weight: bold">, </span>clauses<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Find a symbol and its value if it appears only as a positive literal
+    (or only as a negative) in clauses.
+    &gt;&gt;&gt; find_pure_symbol([A, B, C], [A|~B,~B|~C,C|A])
+    (A, True)
+    """
+    </span><span style="color: blue; font-weight: bold">for </span>s <span style="color: blue; font-weight: bold">in </span>symbols<span style="font-weight: bold">:
+        </span>found_pos<span style="font-weight: bold">, </span>found_neg <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">False
+        for </span>c <span style="color: blue; font-weight: bold">in </span>clauses<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if not </span>found_pos <span style="color: blue; font-weight: bold">and </span>s <span style="color: blue; font-weight: bold">in </span>disjuncts<span style="font-weight: bold">(</span>c<span style="font-weight: bold">): </span>found_pos <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+            if not </span>found_neg <span style="color: blue; font-weight: bold">and </span><span style="font-weight: bold">~</span>s <span style="color: blue; font-weight: bold">in </span>disjuncts<span style="font-weight: bold">(</span>c<span style="font-weight: bold">): </span>found_neg <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+        if </span>found_pos <span style="font-weight: bold">!= </span>found_neg<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>s<span style="font-weight: bold">, </span>found_pos
+    <span style="color: blue; font-weight: bold">return </span><span style="color: blue">None</span><span style="font-weight: bold">, </span><span style="color: blue">None
+
+</span><span style="color: blue; font-weight: bold">def </span>find_unit_clause<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>model<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""A unit clause has only 1 variable that is not bound in the model.
+    &gt;&gt;&gt; find_unit_clause([A|B|C, B|~C, A|~B], {A:False})    # CTM: A:True -&gt; A:False
+    (B, False)
+    """
+    </span><span style="color: blue; font-weight: bold">for </span>clause <span style="color: blue; font-weight: bold">in </span>clauses<span style="font-weight: bold">:
+        </span>num_not_in_model <span style="font-weight: bold">= </span><span style="color: red">0
+        </span>true_literal_in_clause <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False </span><span style="color: green; font-style: italic"># CTM
+        </span><span style="color: blue; font-weight: bold">for </span>literal <span style="color: blue; font-weight: bold">in </span>disjuncts<span style="font-weight: bold">(</span>clause<span style="font-weight: bold">):
+            </span>sym <span style="font-weight: bold">= </span>literal_symbol<span style="font-weight: bold">(</span>literal<span style="font-weight: bold">)
+            
+            </span><span style="color: green; font-style: italic"># CTM: Ensure all already assigned variables lead to literals that are false!
+            # (If the literals are true, then the remaining vars could lead to
+            # true or false literals)
+            </span><span style="color: blue; font-weight: bold">if </span>sym <span style="color: blue; font-weight: bold">in </span>model<span style="font-weight: bold">:
+                </span>val <span style="font-weight: bold">= </span>model<span style="font-weight: bold">[</span>sym<span style="font-weight: bold">]
+                </span><span style="color: blue; font-weight: bold">if </span><span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">not </span>val <span style="color: blue; font-weight: bold">and </span>literal<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">or </span><span style="font-weight: bold">(</span>val <span style="color: blue; font-weight: bold">and </span>literal<span style="font-weight: bold">.</span>op <span style="font-weight: bold">!= </span><span style="color: red">'~'</span><span style="font-weight: bold">):
+                    </span>true_literal_in_clause <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+                    
+            else</span><span style="font-weight: bold">:
+                </span>num_not_in_model <span style="font-weight: bold">+= </span><span style="color: red">1
+                </span>P<span style="font-weight: bold">, </span>value <span style="font-weight: bold">= </span>sym<span style="font-weight: bold">, (</span>literal<span style="font-weight: bold">.</span>op <span style="font-weight: bold">!= </span><span style="color: red">'~'</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>num_not_in_model <span style="font-weight: bold">== </span><span style="color: red">1 </span><span style="color: blue; font-weight: bold">and not </span>true_literal_in_clause<span style="font-weight: bold">: </span><span style="color: green; font-style: italic"># CTM
+            </span><span style="color: blue; font-weight: bold">return </span>P<span style="font-weight: bold">, </span>value
+    <span style="color: blue; font-weight: bold">return </span><span style="color: blue">None</span><span style="font-weight: bold">, </span><span style="color: blue">None
+
+
+</span><span style="color: blue; font-weight: bold">def </span>literal_symbol<span style="font-weight: bold">(</span>literal<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""The symbol in this literal (without the negation).
+    &gt;&gt;&gt; literal_symbol(P)
+    P
+    &gt;&gt;&gt; literal_symbol(~P)
+    P
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>literal<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>literal<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>literal
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+# Walk-SAT [Fig. 7.18]
+
+</span><span style="color: blue; font-weight: bold">def </span>WalkSAT<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>p<span style="font-weight: bold">=</span><span style="color: red">0.5</span><span style="font-weight: bold">, </span>max_flips<span style="font-weight: bold">=</span><span style="color: red">10000</span><span style="font-weight: bold">):
+    </span><span style="color: green; font-style: italic">## model is a random assignment of true/false to the symbols in clauses
+    ## See ~/aima1e/print1/manual/knowledge+logic-answers.tex ???
+    </span>model <span style="font-weight: bold">= </span>dict<span style="font-weight: bold">([(</span>s<span style="font-weight: bold">, </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">([</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">]))
+                 </span><span style="color: blue; font-weight: bold">for </span>s <span style="color: blue; font-weight: bold">in </span>prop_symbols<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">)])
+    </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>max_flips<span style="font-weight: bold">):
+        </span>satisfied<span style="font-weight: bold">, </span>unsatisfied <span style="font-weight: bold">= [], []
+        </span><span style="color: blue; font-weight: bold">for </span>clause <span style="color: blue; font-weight: bold">in </span>clauses<span style="font-weight: bold">:
+            </span>if_<span style="font-weight: bold">(</span>pl_true<span style="font-weight: bold">(</span>clause<span style="font-weight: bold">, </span>model<span style="font-weight: bold">), </span>satisfied<span style="font-weight: bold">, </span>unsatisfied<span style="font-weight: bold">).</span>append<span style="font-weight: bold">(</span>clause<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>unsatisfied<span style="font-weight: bold">: </span><span style="color: green; font-style: italic">## if model satisfies all the clauses
+            </span><span style="color: blue; font-weight: bold">return </span>model
+        clause <span style="font-weight: bold">= </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span>unsatisfied<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>probability<span style="font-weight: bold">(</span>p<span style="font-weight: bold">):
+            </span>sym <span style="font-weight: bold">= </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span>prop_symbols<span style="font-weight: bold">(</span>clause<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: green; font-style: italic">## Flip the symbol in clause that maximizes number of sat. clauses
+            </span><span style="color: blue; font-weight: bold">raise </span>NotImplementedError
+        model<span style="font-weight: bold">[</span>sym<span style="font-weight: bold">] = </span><span style="color: blue; font-weight: bold">not </span>model<span style="font-weight: bold">[</span>sym<span style="font-weight: bold">]
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: darkred">'''
+class HybridWumpusAgent(agents.Agent):
+    "An agent for the wumpus world that does logical inference. [Fig. 7.19]"""
+    def __init__(self):
+        unimplemented()
+
+def plan_route(current, goals, allowed):
+    unimplemented()
+'''
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">def </span>SAT_plan<span style="font-weight: bold">(</span>init<span style="font-weight: bold">, </span>transition<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">, </span>t_max<span style="font-weight: bold">, </span>SAT_solver<span style="font-weight: bold">=</span><span style="color: blue">None </span><span style="color: green; font-style: italic"># CTM: dpll_satisfiable
+             </span><span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 7.22]"
+    </span><span style="color: blue; font-weight: bold">for </span>t <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>t_max<span style="font-weight: bold">):
+        </span>cnf <span style="font-weight: bold">= </span>translate_to_SAT<span style="font-weight: bold">(</span>init<span style="font-weight: bold">, </span>transition<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">, </span>t<span style="font-weight: bold">)
+        </span>model <span style="font-weight: bold">= </span>SAT_solver<span style="font-weight: bold">(</span>cnf<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>model <span style="color: blue; font-weight: bold">is not False</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>extract_solution<span style="font-weight: bold">(</span>model<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+
+</span><span style="color: blue; font-weight: bold">def </span>translate_to_SAT<span style="font-weight: bold">(</span>init<span style="font-weight: bold">, </span>transition<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">, </span>t<span style="font-weight: bold">):
+    </span>unimplemented<span style="font-weight: bold">()
+
+</span><span style="color: blue; font-weight: bold">def </span>extract_solution<span style="font-weight: bold">(</span>model<span style="font-weight: bold">):
+    </span>unimplemented<span style="font-weight: bold">()
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">def </span>unify<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Unify expressions x,y with substitution s; return a substitution that
+    would make x,y equal, or None if x,y can not unify. x and y can be
+    variables (e.g. Expr('x')), constants, lists, or Exprs. [Fig. 9.1]
+    &gt;&gt;&gt; ppsubst(unify(x + y, y + C, {}))
+    {x: y, y: C}
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>s <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+    </span><span style="color: blue; font-weight: bold">elif </span>x <span style="font-weight: bold">== </span>y<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>s
+    <span style="color: blue; font-weight: bold">elif </span>is_variable<span style="font-weight: bold">(</span>x<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>unify_var<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>s<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>is_variable<span style="font-weight: bold">(</span>y<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>unify_var<span style="font-weight: bold">(</span>y<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>s<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>isinstance<span style="font-weight: bold">(</span>y<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>unify<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>args<span style="font-weight: bold">, </span>y<span style="font-weight: bold">.</span>args<span style="font-weight: bold">, </span>unify<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, </span>y<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, </span>s<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">elif </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>str<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">or </span>isinstance<span style="font-weight: bold">(</span>y<span style="font-weight: bold">, </span>str<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+    </span><span style="color: blue; font-weight: bold">elif </span>issequence<span style="font-weight: bold">(</span>x<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>issequence<span style="font-weight: bold">(</span>y<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>len<span style="font-weight: bold">(</span>x<span style="font-weight: bold">) == </span>len<span style="font-weight: bold">(</span>y<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if not </span>x<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>s
+        <span style="color: blue; font-weight: bold">return </span>unify<span style="font-weight: bold">(</span>x<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">:], </span>y<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">:], </span>unify<span style="font-weight: bold">(</span>x<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>y<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>s<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+
+</span><span style="color: blue; font-weight: bold">def </span>is_variable<span style="font-weight: bold">(</span>x<span style="font-weight: bold">):
+    </span><span style="color: red">"A variable is an Expr with no args and a lowercase symbol as the op."
+    </span><span style="color: blue; font-weight: bold">return </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and not </span>x<span style="font-weight: bold">.</span>args <span style="color: blue; font-weight: bold">and </span>is_var_symbol<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>unify_var<span style="font-weight: bold">(</span>var<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>s<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">if </span>var <span style="color: blue; font-weight: bold">in </span>s<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>unify<span style="font-weight: bold">(</span>s<span style="font-weight: bold">[</span>var<span style="font-weight: bold">], </span>x<span style="font-weight: bold">, </span>s<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>occur_check<span style="font-weight: bold">(</span>var<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>s<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>extend<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>var<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>occur_check<span style="font-weight: bold">(</span>var<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return true if variable var occurs anywhere in x
+    (or in subst(s, x), if s has a binding for x)."""
+    </span><span style="color: blue; font-weight: bold">if </span>var <span style="font-weight: bold">== </span>x<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return True
+    elif </span>is_variable<span style="font-weight: bold">(</span>x<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>x <span style="color: blue; font-weight: bold">in </span>s<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>occur_check<span style="font-weight: bold">(</span>var<span style="font-weight: bold">, </span>s<span style="font-weight: bold">[</span>x<span style="font-weight: bold">], </span>s<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>occur_check<span style="font-weight: bold">(</span>var<span style="font-weight: bold">, </span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, </span>s<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">or
+                </span>occur_check<span style="font-weight: bold">(</span>var<span style="font-weight: bold">, </span>x<span style="font-weight: bold">.</span>args<span style="font-weight: bold">, </span>s<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">elif </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, (</span>list<span style="font-weight: bold">, </span>tuple<span style="font-weight: bold">)):
+        </span><span style="color: blue; font-weight: bold">return </span>some<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>element<span style="font-weight: bold">: </span>occur_check<span style="font-weight: bold">(</span>var<span style="font-weight: bold">, </span>element<span style="font-weight: bold">, </span>s<span style="font-weight: bold">), </span>x<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return False
+
+def </span>extend<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>var<span style="font-weight: bold">, </span>val<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Copy the substitution s and extend it by setting var to val;
+    return copy.
+    &gt;&gt;&gt; ppsubst(extend({x: 1}, y, 2))
+    {x: 1, y: 2}
+    """
+    </span>s2 <span style="font-weight: bold">= </span>s<span style="font-weight: bold">.</span>copy<span style="font-weight: bold">()
+    </span>s2<span style="font-weight: bold">[</span>var<span style="font-weight: bold">] = </span>val
+    <span style="color: blue; font-weight: bold">return </span>s2
+
+<span style="color: blue; font-weight: bold">def </span>subst<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>x<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Substitute the substitution s into the expression x.
+    &gt;&gt;&gt; subst({x: 42, y:0}, F(x) + y)
+    (F(42) + 0)
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>list<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>subst<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>xi<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>xi <span style="color: blue; font-weight: bold">in </span>x<span style="font-weight: bold">]
+    </span><span style="color: blue; font-weight: bold">elif </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>tuple<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>tuple<span style="font-weight: bold">([</span>subst<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>xi<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>xi <span style="color: blue; font-weight: bold">in </span>x<span style="font-weight: bold">])
+    </span><span style="color: blue; font-weight: bold">elif not </span>isinstance<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>x
+    <span style="color: blue; font-weight: bold">elif </span>is_var_symbol<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>s<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>x<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, *[</span>subst<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>arg<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>arg <span style="color: blue; font-weight: bold">in </span>x<span style="font-weight: bold">.</span>args<span style="font-weight: bold">])
+
+</span><span style="color: blue; font-weight: bold">def </span>fol_fc_ask<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>alpha<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Inefficient forward chaining for first-order logic. [Fig. 9.3]
+    KB is a FolKB and alpha must be an atomic sentence."""
+    </span><span style="color: blue; font-weight: bold">while True</span><span style="font-weight: bold">:
+        </span>new <span style="font-weight: bold">= {}
+        </span><span style="color: blue; font-weight: bold">for </span>r <span style="color: blue; font-weight: bold">in </span>KB<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">:
+            </span>ps<span style="font-weight: bold">, </span>q <span style="font-weight: bold">= </span>parse_definite_clause<span style="font-weight: bold">(</span>standardize_variables<span style="font-weight: bold">(</span>r<span style="font-weight: bold">))
+            </span><span style="color: blue; font-weight: bold">raise </span>NotImplementedError
+
+<span style="color: blue; font-weight: bold">def </span>standardize_variables<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">, </span>dic<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Replace all the variables in sentence with new variables.
+    &gt;&gt;&gt; e = expr('F(a, b, c) &amp; G(c, A, 23)')
+    &gt;&gt;&gt; len(variables(standardize_variables(e)))
+    3
+    &gt;&gt;&gt; variables(e).intersection(variables(standardize_variables(e)))
+    set([])
+    &gt;&gt;&gt; is_variable(standardize_variables(expr('x')))
+    True
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>dic <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span>dic <span style="font-weight: bold">= {}
+    </span><span style="color: blue; font-weight: bold">if not </span>isinstance<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">, </span>Expr<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>sentence
+    <span style="color: blue; font-weight: bold">elif </span>is_var_symbol<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">.</span>op<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>sentence <span style="color: blue; font-weight: bold">in </span>dic<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>dic<span style="font-weight: bold">[</span>sentence<span style="font-weight: bold">]
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>v <span style="font-weight: bold">= </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'v_%d' </span><span style="font-weight: bold">% </span>standardize_variables<span style="font-weight: bold">.</span>counter<span style="font-weight: bold">.</span>next<span style="font-weight: bold">())
+            </span>dic<span style="font-weight: bold">[</span>sentence<span style="font-weight: bold">] = </span>v
+            <span style="color: blue; font-weight: bold">return </span>v
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">.</span>op<span style="font-weight: bold">,
+                    *[</span>standardize_variables<span style="font-weight: bold">(</span>a<span style="font-weight: bold">, </span>dic<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>a <span style="color: blue; font-weight: bold">in </span>sentence<span style="font-weight: bold">.</span>args<span style="font-weight: bold">])
+
+</span>standardize_variables<span style="font-weight: bold">.</span>counter <span style="font-weight: bold">= </span>itertools<span style="font-weight: bold">.</span>count<span style="font-weight: bold">()
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>FolKB<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""A knowledge base consisting of first-order definite clauses.
+    &gt;&gt;&gt; kb0 = FolKB([expr('Farmer(Mac)'), expr('Rabbit(Pete)'),
+    ...              expr('(Rabbit(r) &amp; Farmer(f)) ==&gt; Hates(f, r)')])
+    &gt;&gt;&gt; kb0.tell(expr('Rabbit(Flopsie)'))
+    &gt;&gt;&gt; kb0.retract(expr('Rabbit(Pete)'))
+    &gt;&gt;&gt; kb0.ask(expr('Hates(Mac, x)'))[x]
+    Flopsie
+    &gt;&gt;&gt; kb0.ask(expr('Wife(Pete, x)'))
+    False
+    """
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>initial_clauses<span style="font-weight: bold">=[]):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses <span style="font-weight: bold">= [] </span><span style="color: green; font-style: italic"># inefficient: no indexing
+        </span><span style="color: blue; font-weight: bold">for </span>clause <span style="color: blue; font-weight: bold">in </span>initial_clauses<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>clause<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>tell<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>is_definite_clause<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">):
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">raise </span>Exception<span style="font-weight: bold">(</span><span style="color: red">"Not a definite clause: %s" </span><span style="font-weight: bold">% </span>sentence<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>ask_generator<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>fol_bc_ask<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>query<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>retract<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">.</span>remove<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>fetch_rules_for_goal<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>goal<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses
+
+<span style="color: blue; font-weight: bold">def </span>test_ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">, </span>kb<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span>q <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+    </span>vars <span style="font-weight: bold">= </span>variables<span style="font-weight: bold">(</span>q<span style="font-weight: bold">)
+    </span>answers <span style="font-weight: bold">= </span>fol_bc_ask<span style="font-weight: bold">(</span>kb <span style="color: blue; font-weight: bold">or </span>test_kb<span style="font-weight: bold">, </span>q<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>sorted<span style="font-weight: bold">([</span>pretty<span style="font-weight: bold">(</span>dict<span style="font-weight: bold">((</span>x<span style="font-weight: bold">, </span>v<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>x<span style="font-weight: bold">, </span>v <span style="color: blue; font-weight: bold">in </span>a<span style="font-weight: bold">.</span>items<span style="font-weight: bold">() </span><span style="color: blue; font-weight: bold">if </span>x <span style="color: blue; font-weight: bold">in </span>vars<span style="font-weight: bold">))
+                   </span><span style="color: blue; font-weight: bold">for </span>a <span style="color: blue; font-weight: bold">in </span>answers<span style="font-weight: bold">],
+                  </span>key<span style="font-weight: bold">=</span>repr<span style="font-weight: bold">)
+
+</span>test_kb <span style="font-weight: bold">= </span>FolKB<span style="font-weight: bold">(
+    </span>map<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">, [</span><span style="color: red">'Farmer(Mac)'</span><span style="font-weight: bold">,
+               </span><span style="color: red">'Rabbit(Pete)'</span><span style="font-weight: bold">,
+               </span><span style="color: red">'Mother(MrsMac, Mac)'</span><span style="font-weight: bold">,
+               </span><span style="color: red">'Mother(MrsRabbit, Pete)'</span><span style="font-weight: bold">,
+               </span><span style="color: red">'(Rabbit(r) &amp; Farmer(f)) ==&gt; Hates(f, r)'</span><span style="font-weight: bold">,
+               </span><span style="color: red">'(Mother(m, c)) ==&gt; Loves(m, c)'</span><span style="font-weight: bold">,
+               </span><span style="color: red">'(Mother(m, r) &amp; Rabbit(r)) ==&gt; Rabbit(m)'</span><span style="font-weight: bold">,
+               </span><span style="color: red">'(Farmer(f)) ==&gt; Human(f)'</span><span style="font-weight: bold">,
+               </span><span style="color: green; font-style: italic"># Note that this order of conjuncts
+               # would result in infinite recursion:
+               #'(Human(h) &amp; Mother(m, h)) ==&gt; Human(m)'
+               </span><span style="color: red">'(Mother(m, h) &amp; Human(h)) ==&gt; Human(m)'
+               </span><span style="font-weight: bold">])
+)
+
+</span>crime_kb <span style="font-weight: bold">= </span>FolKB<span style="font-weight: bold">(
+  </span>map<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">,
+    [</span><span style="color: red">'(American(x) &amp; Weapon(y) &amp; Sells(x, y, z) &amp; Hostile(z)) ==&gt; Criminal(x)'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'Owns(Nono, M1)'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'Missile(M1)'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'(Missile(x) &amp; Owns(Nono, x)) ==&gt; Sells(West, x, Nono)'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'Missile(x) ==&gt; Weapon(x)'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'Enemy(x, America) ==&gt; Hostile(x)'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'American(West)'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'Enemy(Nono, America)'
+     </span><span style="font-weight: bold">])
+)
+
+</span><span style="color: blue; font-weight: bold">def </span>fol_bc_ask<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""A simple backward-chaining algorithm for first-order logic. [Fig. 9.6]
+    KB should be an instance of FolKB, and goals a list of literals.
+    &gt;&gt;&gt; test_ask('Farmer(x)')
+    ['{x: Mac}']
+    &gt;&gt;&gt; test_ask('Human(x)')
+    ['{x: Mac}', '{x: MrsMac}']
+    &gt;&gt;&gt; test_ask('Hates(x, y)')
+    ['{x: Mac, y: MrsRabbit}', '{x: Mac, y: Pete}']
+    &gt;&gt;&gt; test_ask('Loves(x, y)')
+    ['{x: MrsMac, y: Mac}', '{x: MrsRabbit, y: Pete}']
+    &gt;&gt;&gt; test_ask('Rabbit(x)')
+    ['{x: MrsRabbit}', '{x: Pete}']
+    &gt;&gt;&gt; test_ask('Criminal(x)', crime_kb)
+    ['{x: West}']
+    """
+    </span><span style="color: blue; font-weight: bold">return </span>fol_bc_or<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>query<span style="font-weight: bold">, {})
+
+</span><span style="color: blue; font-weight: bold">def </span>fol_bc_or<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">, </span>theta<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">for </span>rule <span style="color: blue; font-weight: bold">in </span>KB<span style="font-weight: bold">.</span>fetch_rules_for_goal<span style="font-weight: bold">(</span>goal<span style="font-weight: bold">):
+        </span>lhs<span style="font-weight: bold">, </span>rhs <span style="font-weight: bold">= </span>parse_definite_clause<span style="font-weight: bold">(</span>standardize_variables<span style="font-weight: bold">(</span>rule<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">for </span>theta1 <span style="color: blue; font-weight: bold">in </span>fol_bc_and<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>lhs<span style="font-weight: bold">, </span>unify<span style="font-weight: bold">(</span>rhs<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">, </span>theta<span style="font-weight: bold">)):
+            </span><span style="color: blue; font-weight: bold">yield </span>theta1
+
+<span style="color: blue; font-weight: bold">def </span>fol_bc_and<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>goals<span style="font-weight: bold">, </span>theta<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">if </span>theta <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">pass
+    elif not </span>goals<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">yield </span>theta
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span>first<span style="font-weight: bold">, </span>rest <span style="font-weight: bold">= </span>goals<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>goals<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">:]
+        </span><span style="color: blue; font-weight: bold">for </span>theta1 <span style="color: blue; font-weight: bold">in </span>fol_bc_or<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>subst<span style="font-weight: bold">(</span>theta<span style="font-weight: bold">, </span>first<span style="font-weight: bold">), </span>theta<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">for </span>theta2 <span style="color: blue; font-weight: bold">in </span>fol_bc_and<span style="font-weight: bold">(</span>KB<span style="font-weight: bold">, </span>rest<span style="font-weight: bold">, </span>theta1<span style="font-weight: bold">):
+                </span><span style="color: blue; font-weight: bold">yield </span>theta2
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+
+# Example application (not in the book).
+# You can use the Expr class to do symbolic differentiation.  This used to be
+# a part of AI; now it is considered a separate field, Symbolic Algebra.
+
+</span><span style="color: blue; font-weight: bold">def </span>diff<span style="font-weight: bold">(</span>y<span style="font-weight: bold">, </span>x<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return the symbolic derivative, dy/dx, as an Expr.
+    However, you probably want to simplify the results with simp.
+    &gt;&gt;&gt; diff(x * x, x)
+    ((x * 1) + (x * 1))
+    &gt;&gt;&gt; simp(diff(x * x, x))
+    (2 * x)
+    """
+    </span><span style="color: blue; font-weight: bold">if </span>y <span style="font-weight: bold">== </span>x<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ONE
+    <span style="color: blue; font-weight: bold">elif not </span>y<span style="font-weight: bold">.</span>args<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span>u<span style="font-weight: bold">, </span>op<span style="font-weight: bold">, </span>v <span style="font-weight: bold">= </span>y<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>y<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, </span>y<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[-</span><span style="color: red">1</span><span style="font-weight: bold">]
+        </span><span style="color: blue; font-weight: bold">if </span>op <span style="font-weight: bold">== </span><span style="color: red">'+'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">) + </span>diff<span style="font-weight: bold">(</span>v<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'-' </span><span style="color: blue; font-weight: bold">and </span>len<span style="font-weight: bold">(</span>args<span style="font-weight: bold">) == </span><span style="color: red">1</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">-</span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'-'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">) - </span>diff<span style="font-weight: bold">(</span>v<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'*'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>u <span style="font-weight: bold">* </span>diff<span style="font-weight: bold">(</span>v<span style="font-weight: bold">, </span>x<span style="font-weight: bold">) + </span>v <span style="font-weight: bold">* </span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'/'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>v<span style="font-weight: bold">*</span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">) - </span>u<span style="font-weight: bold">*</span>diff<span style="font-weight: bold">(</span>v<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)) / (</span>v <span style="font-weight: bold">* </span>v<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'**' </span><span style="color: blue; font-weight: bold">and </span>isnumber<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>v <span style="font-weight: bold">* </span>u <span style="font-weight: bold">** (</span>v <span style="font-weight: bold">- </span><span style="color: red">1</span><span style="font-weight: bold">) * </span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'**'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>v <span style="font-weight: bold">* </span>u <span style="font-weight: bold">** (</span>v <span style="font-weight: bold">- </span><span style="color: red">1</span><span style="font-weight: bold">) * </span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">)
+                                 + </span>u <span style="font-weight: bold">** </span>v <span style="font-weight: bold">* </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'log'</span><span style="font-weight: bold">)(</span>u<span style="font-weight: bold">) * </span>diff<span style="font-weight: bold">(</span>v<span style="font-weight: bold">, </span>x<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'log'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>diff<span style="font-weight: bold">(</span>u<span style="font-weight: bold">, </span>x<span style="font-weight: bold">) / </span>u
+        <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">raise </span>ValueError<span style="font-weight: bold">(</span><span style="color: red">"Unknown op: %s in diff(%s, %s)" </span><span style="font-weight: bold">% (</span>op<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>x<span style="font-weight: bold">))
+
+</span><span style="color: blue; font-weight: bold">def </span>simp<span style="font-weight: bold">(</span>x<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">if not </span>x<span style="font-weight: bold">.</span>args<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>x
+    args <span style="font-weight: bold">= </span>map<span style="font-weight: bold">(</span>simp<span style="font-weight: bold">, </span>x<span style="font-weight: bold">.</span>args<span style="font-weight: bold">)
+    </span>u<span style="font-weight: bold">, </span>op<span style="font-weight: bold">, </span>v <span style="font-weight: bold">= </span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">], </span>x<span style="font-weight: bold">.</span>op<span style="font-weight: bold">, </span>args<span style="font-weight: bold">[-</span><span style="color: red">1</span><span style="font-weight: bold">]
+    </span><span style="color: blue; font-weight: bold">if </span>op <span style="font-weight: bold">== </span><span style="color: red">'+'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>v <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>u
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>v
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>v<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>TWO <span style="font-weight: bold">* </span>u
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== -</span>v <span style="color: blue; font-weight: bold">or </span>v <span style="font-weight: bold">== -</span>u<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+    <span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'-' </span><span style="color: blue; font-weight: bold">and </span>len<span style="font-weight: bold">(</span>args<span style="font-weight: bold">) == </span><span style="color: red">1</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>u<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'-' </span><span style="color: blue; font-weight: bold">and </span>len<span style="font-weight: bold">(</span>u<span style="font-weight: bold">.</span>args<span style="font-weight: bold">) == </span><span style="color: red">1</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>u<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">] </span><span style="color: green; font-style: italic">## --y ==&gt; y
+    </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'-'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>v <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>u
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">-</span>v
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>v<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== -</span>v <span style="color: blue; font-weight: bold">or </span>v <span style="font-weight: bold">== -</span>u<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+    <span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'*'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ZERO <span style="color: blue; font-weight: bold">or </span>v <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ONE<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>v
+        <span style="color: blue; font-weight: bold">if </span>v <span style="font-weight: bold">== </span>ONE<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>u
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>v<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>u <span style="font-weight: bold">** </span><span style="color: red">2
+    </span><span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'/'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+        <span style="color: blue; font-weight: bold">if </span>v <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'Undefined'</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>v<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ONE
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== -</span>v <span style="color: blue; font-weight: bold">or </span>v <span style="font-weight: bold">== -</span>u<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+    <span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'**'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+        <span style="color: blue; font-weight: bold">if </span>v <span style="font-weight: bold">== </span>ZERO<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ONE
+        <span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ONE<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ONE
+        <span style="color: blue; font-weight: bold">if </span>v <span style="font-weight: bold">== </span>ONE<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>u
+    <span style="color: blue; font-weight: bold">elif </span>op <span style="font-weight: bold">== </span><span style="color: red">'log'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>u <span style="font-weight: bold">== </span>ONE<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>ZERO
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">raise </span>ValueError<span style="font-weight: bold">(</span><span style="color: red">"Unknown op: " </span><span style="font-weight: bold">+ </span>op<span style="font-weight: bold">)
+    </span><span style="color: green; font-style: italic">## If we fall through to here, we can not simplify further
+    </span><span style="color: blue; font-weight: bold">return </span>Expr<span style="font-weight: bold">(</span>op<span style="font-weight: bold">, *</span>args<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>d<span style="font-weight: bold">(</span>y<span style="font-weight: bold">, </span>x<span style="font-weight: bold">):
+    </span><span style="color: red">"Differentiate and then simplify."
+    </span><span style="color: blue; font-weight: bold">return </span>simp<span style="font-weight: bold">(</span>diff<span style="font-weight: bold">(</span>y<span style="font-weight: bold">, </span>x<span style="font-weight: bold">))
+
+</span><span style="color: green; font-style: italic">#_______________________________________________________________________________
+
+# Utilities for doctest cases
+# These functions print their arguments in a standard order
+# to compensate for the random order in the standard representation
+
+</span><span style="color: blue; font-weight: bold">def </span>pretty<span style="font-weight: bold">(</span>x<span style="font-weight: bold">):
+    </span>t <span style="font-weight: bold">= </span>type<span style="font-weight: bold">(</span>x<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>t <span style="color: blue; font-weight: bold">is </span>dict<span style="font-weight: bold">:  </span><span style="color: blue; font-weight: bold">return </span>pretty_dict<span style="font-weight: bold">(</span>x<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">elif </span>t <span style="color: blue; font-weight: bold">is </span>set<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>pretty_set<span style="font-weight: bold">(</span>x<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:          </span><span style="color: blue; font-weight: bold">return </span>repr<span style="font-weight: bold">(</span>x<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>pretty_dict<span style="font-weight: bold">(</span>d<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return dictionary d's repr but with the items sorted.
+    &gt;&gt;&gt; pretty_dict({'m': 'M', 'a': 'A', 'r': 'R', 'k': 'K'})
+    "{'a': 'A', 'k': 'K', 'm': 'M', 'r': 'R'}"
+    &gt;&gt;&gt; pretty_dict({z: C, y: B, x: A})
+    '{x: A, y: B, z: C}'
+    """
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'{%s}' </span><span style="font-weight: bold">% </span><span style="color: red">', '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span><span style="color: red">'%r: %r' </span><span style="font-weight: bold">% (</span>k<span style="font-weight: bold">, </span>v<span style="font-weight: bold">)
+                              </span><span style="color: blue; font-weight: bold">for </span>k<span style="font-weight: bold">, </span>v <span style="color: blue; font-weight: bold">in </span>sorted<span style="font-weight: bold">(</span>d<span style="font-weight: bold">.</span>items<span style="font-weight: bold">(), </span>key<span style="font-weight: bold">=</span>repr<span style="font-weight: bold">))
+
+</span><span style="color: blue; font-weight: bold">def </span>pretty_set<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return set s's repr but with the items sorted.
+    &gt;&gt;&gt; pretty_set(set(['A', 'Q', 'F', 'K', 'Y', 'B']))
+    "set(['A', 'B', 'F', 'K', 'Q', 'Y'])"
+    &gt;&gt;&gt; pretty_set(set([z, y, x]))
+    'set([x, y, z])'
+    """
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'set(%r)' </span><span style="font-weight: bold">% </span>sorted<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>key<span style="font-weight: bold">=</span>repr<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>pp<span style="font-weight: bold">(</span>x<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">print </span>pretty<span style="font-weight: bold">(</span>x<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>ppsubst<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Pretty-print substitution s"""
+    </span>ppdict<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>ppdict<span style="font-weight: bold">(</span>d<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">print </span>pretty_dict<span style="font-weight: bold">(</span>d<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>ppset<span style="font-weight: bold">(</span>s<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">print </span>pretty_set<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#________________________________________________________________________
+# CTM: misc. helpers to extend the interface
+
+</span><span style="color: blue; font-weight: bold">def </span>is_literal<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">return </span>isinstance<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">,</span>Expr<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>\
+           <span style="font-weight: bold">((</span>thing<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~' </span><span style="color: blue; font-weight: bold">and </span>len<span style="font-weight: bold">(</span>things<span style="font-weight: bold">.</span>args<span style="font-weight: bold">) == </span><span style="color: red">1</span><span style="font-weight: bold">) </span>\
+            <span style="color: blue; font-weight: bold">or </span><span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">.</span>args<span style="font-weight: bold">) == </span><span style="color: red">0</span><span style="font-weight: bold">))
+    
+</span><span style="color: blue; font-weight: bold">def </span>is_literal_positive<span style="font-weight: bold">(</span>literal<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">return not </span>literal<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'
+
+</span><span style="color: blue; font-weight: bold">def </span>literal_name<span style="font-weight: bold">(</span>literal<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">if </span>literal<span style="font-weight: bold">.</span>op <span style="font-weight: bold">== </span><span style="color: red">'~'</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>literal<span style="font-weight: bold">.</span>args<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">].</span>op
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">return </span>literal<span style="font-weight: bold">.</span>op
+
+<span style="color: blue; font-weight: bold">def </span>clauses_to_conjunct<span style="font-weight: bold">(</span>clause_list<span style="font-weight: bold">):
+    </span><span style="color: darkred">""" coerce a list of clauses into a conjunction """
+    </span>conj <span style="font-weight: bold">= </span>Expr<span style="font-weight: bold">(</span><span style="color: red">'&amp;'</span><span style="font-weight: bold">)
+    </span>conj<span style="font-weight: bold">.</span>args <span style="font-weight: bold">= </span>clause_list
+    <span style="color: blue; font-weight: bold">return </span>conj
+    <span style="color: green; font-style: italic">#return ' &amp; '.join(map(lambda(i): '{0}'.format(KB.clauses[i]), list))
+
+</span><span style="color: blue; font-weight: bold">def </span>prop_symbols_from_KB<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">):
+    </span><span style="color: darkred">""" CTM: This is very inefficient,
+    but I can't figure out why direct list iteration doesn't work """
+    </span><span style="color: blue; font-weight: bold">return </span>prop_symbols<span style="font-weight: bold">(</span>clauses_to_conjunct<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">))
+
+</span><span style="color: blue; font-weight: bold">def </span>prop_symbols_from_clause_list<span style="font-weight: bold">(</span>clause_list<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">return </span>prop_symbols<span style="font-weight: bold">(</span>clauses_to_conjunct<span style="font-weight: bold">(</span>clause_list<span style="font-weight: bold">))
+
+</span><span style="color: green; font-style: italic">#________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>logicTest<span style="font-weight: bold">: </span><span style="color: darkred">"""
+### PropKB
+&gt;&gt;&gt; kb = PropKB()
+&gt;&gt;&gt; kb.tell(A &amp; B)
+&gt;&gt;&gt; kb.tell(B &gt;&gt; C)
+&gt;&gt;&gt; kb.ask(C) ## The result {} means true, with no substitutions
+{}
+&gt;&gt;&gt; kb.ask(P)
+False
+&gt;&gt;&gt; kb.retract(B)
+&gt;&gt;&gt; kb.ask(C)
+False
+
+&gt;&gt;&gt; pl_true(P, {})
+&gt;&gt;&gt; pl_true(P | Q, {P: True})
+True
+
+# Notice that the function pl_true cannot reason by cases:
+&gt;&gt;&gt; pl_true(P | ~P)
+
+# However, tt_true can:
+&gt;&gt;&gt; tt_true(P | ~P)
+True
+
+# The following are tautologies from [Fig. 7.11]:
+&gt;&gt;&gt; tt_true("(A &amp; B) &lt;=&gt; (B &amp; A)")
+True
+&gt;&gt;&gt; tt_true("(A | B) &lt;=&gt; (B | A)")
+True
+&gt;&gt;&gt; tt_true("((A &amp; B) &amp; C) &lt;=&gt; (A &amp; (B &amp; C))")
+True
+&gt;&gt;&gt; tt_true("((A | B) | C) &lt;=&gt; (A | (B | C))")
+True
+&gt;&gt;&gt; tt_true("~~A &lt;=&gt; A")
+True
+&gt;&gt;&gt; tt_true("(A &gt;&gt; B) &lt;=&gt; (~B &gt;&gt; ~A)")
+True
+&gt;&gt;&gt; tt_true("(A &gt;&gt; B) &lt;=&gt; (~A | B)")
+True
+&gt;&gt;&gt; tt_true("(A &lt;=&gt; B) &lt;=&gt; ((A &gt;&gt; B) &amp; (B &gt;&gt; A))")
+True
+&gt;&gt;&gt; tt_true("~(A &amp; B) &lt;=&gt; (~A | ~B)")
+True
+&gt;&gt;&gt; tt_true("~(A | B) &lt;=&gt; (~A &amp; ~B)")
+True
+&gt;&gt;&gt; tt_true("(A &amp; (B | C)) &lt;=&gt; ((A &amp; B) | (A &amp; C))")
+True
+&gt;&gt;&gt; tt_true("(A | (B &amp; C)) &lt;=&gt; ((A | B) &amp; (A | C))")
+True
+
+# The following are not tautologies:
+&gt;&gt;&gt; tt_true(A &amp; ~A)
+False
+&gt;&gt;&gt; tt_true(A &amp; B)
+False
+
+### [Fig. 7.13]
+&gt;&gt;&gt; alpha = expr("~P12")
+&gt;&gt;&gt; to_cnf(Fig[7,13] &amp; ~alpha)
+((~P12 | B11) &amp; (~P21 | B11) &amp; (P12 | P21 | ~B11) &amp; ~B11 &amp; P12)
+&gt;&gt;&gt; tt_entails(Fig[7,13], alpha)
+True
+&gt;&gt;&gt; pl_resolution(PropKB(Fig[7,13]), alpha)
+True
+
+### [Fig. 7.15]
+&gt;&gt;&gt; pl_fc_entails(Fig[7,15], expr('SomethingSilly'))
+False
+
+### Unification:
+&gt;&gt;&gt; unify(x, x, {})
+{}
+&gt;&gt;&gt; unify(x, 3, {})
+{x: 3}
+
+
+&gt;&gt;&gt; to_cnf((P&amp;Q) | (~P &amp; ~Q))
+((~P | P) &amp; (~Q | P) &amp; (~P | Q) &amp; (~Q | Q))
+
+"""
+</span>
+    </pre>
+    </body>
+    </html>
+    

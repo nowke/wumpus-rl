@@ -1,0 +1,900 @@
+<html>
+    <head>
+    <title>search.py</title>
+    </head>
+    <body>
+    <h3>search.py (<a href="../search.py">original</a>)</h3>
+    <hr>
+    <pre>
+<span style="color: green; font-style: italic"># search.py
+# ---------
+# Licensing Information:
+# Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+# You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+# The Hunt The Wumpus AI project was developed at University of Arizona
+# by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+# This project extends the python code provided by Peter Norvig as part of
+# the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+# see http://aima.cs.berkeley.edu/code.html
+# In particular, the following files come directly from the AIMA python
+# code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+# ('logic.py' has been modified by Clay Morrison in locations with the
+# comment 'CTM')
+# The file ['minisat.py'] implements a slim system call wrapper to the minisat
+# (see http://minisat.se) SAT solver, and is directly based on the satispy
+# python project, see https://github.com/netom/satispy .
+
+</span><span style="color: darkred">"""Search (Chapters 3-4)
+
+The way to use this code is to subclass Problem to create a class of problems,
+then create problem instances and solve them with calls to the various search
+functions."""
+
+</span><span style="color: blue; font-weight: bold">from </span>utils <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">import </span>math<span style="font-weight: bold">, </span>random<span style="font-weight: bold">, </span>sys<span style="font-weight: bold">, </span>time<span style="font-weight: bold">, </span>bisect<span style="font-weight: bold">, </span>string
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>Problem<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""The abstract class for a formal problem.  You should subclass
+    this and implement the methods actions and result, and possibly
+    __init__, goal_test, and path_cost. Then you will create instances
+    of your subclass and solve them with the various search functions."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>initial<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""The constructor specifies the initial state, and possibly a goal
+        state, if there is a unique goal.  Your subclass's constructor can add
+        other arguments."""
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>initial <span style="font-weight: bold">= </span>initial; <span style="color: blue">self</span><span style="font-weight: bold">.</span>goal <span style="font-weight: bold">= </span>goal
+
+    <span style="color: blue; font-weight: bold">def </span>actions<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return the actions that can be executed in the given
+        state. The result would typically be a list, but if there are
+        many actions, consider yielding them one at a time in an
+        iterator, rather than building them all at once."""
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>result<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return the state that results from executing the given
+        action in the given state. The action must be one of
+        self.actions(state)."""
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>goal_test<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return True if the state is a goal. The default method compares the
+        state to self.goal, as specified in the constructor. Override this
+        method if checking against a single self.goal is not enough."""
+        </span><span style="color: blue; font-weight: bold">return </span>state <span style="font-weight: bold">== </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>goal
+
+    <span style="color: blue; font-weight: bold">def </span>path_cost<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>c<span style="font-weight: bold">, </span>state1<span style="font-weight: bold">, </span>action<span style="font-weight: bold">, </span>state2<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return the cost of a solution path that arrives at state2 from
+        state1 via action, assuming cost c to get up to state1. If the problem
+        is such that the path doesn't matter, this function will only look at
+        state2.  If the path does matter, it will consider c and maybe state1
+        and action. The default method costs 1 for every step in the path."""
+        </span><span style="color: blue; font-weight: bold">return </span>c <span style="font-weight: bold">+ </span><span style="color: red">1
+
+    </span><span style="color: blue; font-weight: bold">def </span>value<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""For optimization problems, each state has a value.  Hill-climbing
+        and related algorithms try to maximize this value."""
+        </span>abstract
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>Node<span style="font-weight: bold">:
+    </span><span style="color: darkred">"""A node in a search tree. Contains a pointer to the parent (the node
+    that this is a successor of) and to the actual state for this node. Note
+    that if a state is arrived at by two paths, then there are two nodes with
+    the same state.  Also includes the action that got us to this state, and
+    the total path_cost (also known as g) to reach the node.  Other functions
+    may add an f and h value; see best_first_graph_search and astar_search for
+    an explanation of how the f and h values are handled. You will not need to
+    subclass this class."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">, </span>parent<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>action<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>path_cost<span style="font-weight: bold">=</span><span style="color: red">0</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Create a search tree Node, derived from a parent by an action."
+        </span>update<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">=</span>state<span style="font-weight: bold">, </span>parent<span style="font-weight: bold">=</span>parent<span style="font-weight: bold">, </span>action<span style="font-weight: bold">=</span>action<span style="font-weight: bold">,
+               </span>path_cost<span style="font-weight: bold">=</span>path_cost<span style="font-weight: bold">, </span>depth<span style="font-weight: bold">=</span><span style="color: red">0</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>parent<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>depth <span style="font-weight: bold">= </span>parent<span style="font-weight: bold">.</span>depth <span style="font-weight: bold">+ </span><span style="color: red">1
+
+    </span><span style="color: blue; font-weight: bold">def </span>__repr__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">"&lt;Node %s&gt;" </span><span style="font-weight: bold">% (</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">,)
+
+    </span><span style="color: blue; font-weight: bold">def </span>expand<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>problem<span style="font-weight: bold">):
+        </span><span style="color: red">"List the nodes reachable in one step from this node."
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>child_node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>action<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">for </span>action <span style="color: blue; font-weight: bold">in </span>problem<span style="font-weight: bold">.</span>actions<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">)]
+
+    </span><span style="color: blue; font-weight: bold">def </span>child_node<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>problem<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span><span style="color: red">"Fig. 3.10"
+        </span>next <span style="font-weight: bold">= </span>problem<span style="font-weight: bold">.</span>result<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">, </span>action<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>Node<span style="font-weight: bold">(</span>next<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">, </span>action<span style="font-weight: bold">,
+                    </span>problem<span style="font-weight: bold">.</span>path_cost<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>path_cost<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">, </span>action<span style="font-weight: bold">, </span>next<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>solution<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Return the sequence of actions to go from the root to this node."
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>node<span style="font-weight: bold">.</span>action <span style="color: blue; font-weight: bold">for </span>node <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>path<span style="font-weight: bold">()[</span><span style="color: red">1</span><span style="font-weight: bold">:]]
+
+    </span><span style="color: blue; font-weight: bold">def </span>path<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Return a list of nodes forming the path from the root to this node."
+        </span>node<span style="font-weight: bold">, </span>path_back <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">, []
+        </span><span style="color: blue; font-weight: bold">while </span>node<span style="font-weight: bold">:
+            </span>path_back<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>node<span style="font-weight: bold">)
+            </span>node <span style="font-weight: bold">= </span>node<span style="font-weight: bold">.</span>parent
+        <span style="color: blue; font-weight: bold">return </span>list<span style="font-weight: bold">(</span>reversed<span style="font-weight: bold">(</span>path_back<span style="font-weight: bold">))
+
+    </span><span style="color: green; font-style: italic"># We want for a queue of nodes in breadth_first_search or
+    # astar_search to have no duplicated states, so we treat nodes
+    # with the same state as equal. [Problem: this may not be what you
+    # want in other contexts.]
+
+    </span><span style="color: blue; font-weight: bold">def </span>__eq__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>isinstance<span style="font-weight: bold">(</span>other<span style="font-weight: bold">, </span>Node<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state <span style="font-weight: bold">== </span>other<span style="font-weight: bold">.</span>state
+
+    <span style="color: blue; font-weight: bold">def </span>__hash__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>hash<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>SimpleProblemSolvingAgentProgram<span style="font-weight: bold">:
+    </span><span style="color: darkred">"""Abstract framework for a problem-solving agent. [Fig. 3.1]"""
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>initial_state<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span>update<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">=</span>initial_state<span style="font-weight: bold">, </span>seq<span style="font-weight: bold">=[])
+
+    </span><span style="color: blue; font-weight: bold">def </span>__call__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>percept<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>update_state<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">, </span>percept<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>seq<span style="font-weight: bold">:
+            </span>goal <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>formulate_goal<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">)
+            </span>problem <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>formulate_problem<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>state<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">)
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>seq <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>seq<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>seq<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">(</span><span style="color: red">0</span><span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>update_state<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>percept<span style="font-weight: bold">):
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>formulate_goal<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>formulate_problem<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">):
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>search<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>problem<span style="font-weight: bold">):
+        </span>abstract
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+# Uninformed Search algorithms
+
+</span><span style="color: blue; font-weight: bold">def </span>tree_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>frontier<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Search through the successors of a problem to find a goal.
+    The argument frontier should be an empty queue.
+    Don't worry about repeated paths to a state. [Fig. 3.7]"""
+    </span>frontier<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">while </span>frontier<span style="font-weight: bold">:
+        </span>node <span style="font-weight: bold">= </span>frontier<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>node
+        frontier<span style="font-weight: bold">.</span>extend<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+
+</span><span style="color: blue; font-weight: bold">def </span>graph_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>frontier<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Search through the successors of a problem to find a goal.
+    The argument frontier should be an empty queue.
+    If two paths reach a state, only use the first one. [Fig. 3.7]"""
+    </span>frontier<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">))
+    </span>explored <span style="font-weight: bold">= </span>set<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">while </span>frontier<span style="font-weight: bold">:
+        </span>node <span style="font-weight: bold">= </span>frontier<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>node
+        explored<span style="font-weight: bold">.</span>add<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">)
+        </span>frontier<span style="font-weight: bold">.</span>extend<span style="font-weight: bold">(</span>child <span style="color: blue; font-weight: bold">for </span>child <span style="color: blue; font-weight: bold">in </span>node<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">)
+                        </span><span style="color: blue; font-weight: bold">if </span>child<span style="font-weight: bold">.</span>state <span style="color: blue; font-weight: bold">not in </span>explored
+                        <span style="color: blue; font-weight: bold">and </span>child <span style="color: blue; font-weight: bold">not in </span>frontier<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+
+</span><span style="color: blue; font-weight: bold">def </span>breadth_first_tree_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: red">"Search the shallowest nodes in the search tree first."
+    </span><span style="color: blue; font-weight: bold">return </span>tree_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>FIFOQueue<span style="font-weight: bold">())
+
+</span><span style="color: blue; font-weight: bold">def </span>depth_first_tree_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: red">"Search the deepest nodes in the search tree first."
+    </span><span style="color: blue; font-weight: bold">return </span>tree_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>Stack<span style="font-weight: bold">())
+
+</span><span style="color: blue; font-weight: bold">def </span>depth_first_graph_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: red">"Search the deepest nodes in the search tree first."
+    </span><span style="color: blue; font-weight: bold">return </span>graph_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>Stack<span style="font-weight: bold">())
+
+</span><span style="color: blue; font-weight: bold">def </span>breadth_first_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 3.11]"
+    </span>node <span style="font-weight: bold">= </span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>node
+    frontier <span style="font-weight: bold">= </span>FIFOQueue<span style="font-weight: bold">()
+    </span>frontier<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>node<span style="font-weight: bold">)
+    </span>explored <span style="font-weight: bold">= </span>set<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">while </span>frontier<span style="font-weight: bold">:
+        </span>node <span style="font-weight: bold">= </span>frontier<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">()
+        </span>explored<span style="font-weight: bold">.</span>add<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>child <span style="color: blue; font-weight: bold">in </span>node<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">if </span>child<span style="font-weight: bold">.</span>state <span style="color: blue; font-weight: bold">not in </span>explored <span style="color: blue; font-weight: bold">and </span>child <span style="color: blue; font-weight: bold">not in </span>frontier<span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>child<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+                    </span><span style="color: blue; font-weight: bold">return </span>child
+                frontier<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>child<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+
+</span><span style="color: blue; font-weight: bold">def </span>best_first_graph_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>f<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Search the nodes with the lowest f scores first.
+    You specify the function f(node) that you want to minimize; for example,
+    if f is a heuristic estimate to the goal, then we have greedy best
+    first search; if f is node.depth then we have breadth-first search.
+    There is a subtlety: the line "f = memoize(f, 'f')" means that the f
+    values will be cached on the nodes as they are computed. So after doing
+    a best first search you can examine the f values of the path returned."""
+    </span>f <span style="font-weight: bold">= </span>memoize<span style="font-weight: bold">(</span>f<span style="font-weight: bold">, </span><span style="color: red">'f'</span><span style="font-weight: bold">)
+    </span>node <span style="font-weight: bold">= </span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>node
+    frontier <span style="font-weight: bold">= </span>PriorityQueue<span style="font-weight: bold">(</span>min<span style="font-weight: bold">, </span>f<span style="font-weight: bold">)
+    </span>frontier<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>node<span style="font-weight: bold">)
+    </span>explored <span style="font-weight: bold">= </span>set<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">while </span>frontier<span style="font-weight: bold">:
+        </span>node <span style="font-weight: bold">= </span>frontier<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>node
+        explored<span style="font-weight: bold">.</span>add<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>child <span style="color: blue; font-weight: bold">in </span>node<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">if </span>child<span style="font-weight: bold">.</span>state <span style="color: blue; font-weight: bold">not in </span>explored <span style="color: blue; font-weight: bold">and </span>child <span style="color: blue; font-weight: bold">not in </span>frontier<span style="font-weight: bold">:
+                </span>frontier<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>child<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">elif </span>child <span style="color: blue; font-weight: bold">in </span>frontier<span style="font-weight: bold">:
+                </span>incumbent <span style="font-weight: bold">= </span>frontier<span style="font-weight: bold">[</span>child<span style="font-weight: bold">]
+                </span><span style="color: blue; font-weight: bold">if </span>f<span style="font-weight: bold">(</span>child<span style="font-weight: bold">) &lt; </span>f<span style="font-weight: bold">(</span>incumbent<span style="font-weight: bold">):
+                    </span><span style="color: blue; font-weight: bold">del </span>frontier<span style="font-weight: bold">[</span>incumbent<span style="font-weight: bold">]
+                    </span>frontier<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>child<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+
+</span><span style="color: blue; font-weight: bold">def </span>uniform_cost_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 3.14]"
+    </span><span style="color: blue; font-weight: bold">return </span>best_first_graph_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">lambda </span>node<span style="font-weight: bold">: </span>node<span style="font-weight: bold">.</span>path_cost<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>depth_limited_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>limit<span style="font-weight: bold">=</span><span style="color: red">50</span><span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 3.17]"
+    </span><span style="color: blue; font-weight: bold">def </span>recursive_dls<span style="font-weight: bold">(</span>node<span style="font-weight: bold">, </span>problem<span style="font-weight: bold">, </span>limit<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>node
+        <span style="color: blue; font-weight: bold">elif </span>node<span style="font-weight: bold">.</span>depth <span style="font-weight: bold">== </span>limit<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'cutoff'
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>cutoff_occurred <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+            for </span>child <span style="color: blue; font-weight: bold">in </span>node<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+                </span>result <span style="font-weight: bold">= </span>recursive_dls<span style="font-weight: bold">(</span>child<span style="font-weight: bold">, </span>problem<span style="font-weight: bold">, </span>limit<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: red">'cutoff'</span><span style="font-weight: bold">:
+                    </span>cutoff_occurred <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+                elif </span>result <span style="color: blue; font-weight: bold">is not </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">return </span>result
+            <span style="color: blue; font-weight: bold">return </span>if_<span style="font-weight: bold">(</span>cutoff_occurred<span style="font-weight: bold">, </span><span style="color: red">'cutoff'</span><span style="font-weight: bold">, </span><span style="color: blue">None</span><span style="font-weight: bold">)
+
+    </span><span style="color: green; font-style: italic"># Body of depth_limited_search:
+    </span><span style="color: blue; font-weight: bold">return </span>recursive_dls<span style="font-weight: bold">(</span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">), </span>problem<span style="font-weight: bold">, </span>limit<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>iterative_deepening_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 3.18]"
+    </span><span style="color: blue; font-weight: bold">for </span>depth <span style="color: blue; font-weight: bold">in </span>xrange<span style="font-weight: bold">(</span>sys<span style="font-weight: bold">.</span>maxint<span style="font-weight: bold">):
+        </span>result <span style="font-weight: bold">= </span>depth_limited_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>depth<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">!= </span><span style="color: red">'cutoff'</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>result
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+# Informed (Heuristic) Search
+
+</span>greedy_best_first_graph_search <span style="font-weight: bold">= </span>best_first_graph_search
+    <span style="color: green; font-style: italic"># Greedy best-first search is accomplished by specifying f(n) = h(n).
+
+</span><span style="color: blue; font-weight: bold">def </span>astar_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>h<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""A* search is best-first graph search with f(n) = g(n)+h(n).
+    You need to specify the h function when you call astar_search, or
+    else in your Problem subclass."""
+    </span>h <span style="font-weight: bold">= </span>memoize<span style="font-weight: bold">(</span>h <span style="color: blue; font-weight: bold">or </span>problem<span style="font-weight: bold">.</span>h<span style="font-weight: bold">, </span><span style="color: red">'h'</span><span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>best_first_graph_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">lambda </span>n<span style="font-weight: bold">: </span>n<span style="font-weight: bold">.</span>path_cost <span style="font-weight: bold">+ </span>h<span style="font-weight: bold">(</span>n<span style="font-weight: bold">))
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+# Other search algorithms
+
+</span><span style="color: blue; font-weight: bold">def </span>recursive_best_first_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>h<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 3.26]"
+    </span>h <span style="font-weight: bold">= </span>memoize<span style="font-weight: bold">(</span>h <span style="color: blue; font-weight: bold">or </span>problem<span style="font-weight: bold">.</span>h<span style="font-weight: bold">, </span><span style="color: red">'h'</span><span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>RBFS<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>node<span style="font-weight: bold">, </span>flimit<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>node<span style="font-weight: bold">, </span><span style="color: red">0   </span><span style="color: green; font-style: italic"># (The second value is immaterial)
+        </span>successors <span style="font-weight: bold">= </span>node<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>successors<span style="font-weight: bold">) == </span><span style="color: red">0</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>infinity
+        <span style="color: blue; font-weight: bold">for </span>s <span style="color: blue; font-weight: bold">in </span>successors<span style="font-weight: bold">:
+            </span>s<span style="font-weight: bold">.</span>f <span style="font-weight: bold">= </span>max<span style="font-weight: bold">(</span>s<span style="font-weight: bold">.</span>path_cost <span style="font-weight: bold">+ </span>h<span style="font-weight: bold">(</span>s<span style="font-weight: bold">), </span>node<span style="font-weight: bold">.</span>f<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">while True</span><span style="font-weight: bold">:
+            </span>successors<span style="font-weight: bold">.</span>sort<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">: </span>cmp<span style="font-weight: bold">(</span>x<span style="font-weight: bold">.</span>f<span style="font-weight: bold">, </span>y<span style="font-weight: bold">.</span>f<span style="font-weight: bold">)) </span><span style="color: green; font-style: italic"># Order by lowest f value
+            </span>best <span style="font-weight: bold">= </span>successors<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]
+            </span><span style="color: blue; font-weight: bold">if </span>best<span style="font-weight: bold">.</span>f <span style="font-weight: bold">&gt; </span>flimit<span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>best<span style="font-weight: bold">.</span>f
+            <span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>successors<span style="font-weight: bold">) &gt; </span><span style="color: red">1</span><span style="font-weight: bold">:
+                </span>alternative <span style="font-weight: bold">= </span>successors<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">].</span>f
+            <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                </span>alternative <span style="font-weight: bold">= </span>infinity
+            result<span style="font-weight: bold">, </span>best<span style="font-weight: bold">.</span>f <span style="font-weight: bold">= </span>RBFS<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>best<span style="font-weight: bold">, </span>min<span style="font-weight: bold">(</span>flimit<span style="font-weight: bold">, </span>alternative<span style="font-weight: bold">))
+            </span><span style="color: blue; font-weight: bold">if </span>result <span style="color: blue; font-weight: bold">is not </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">return </span>result<span style="font-weight: bold">, </span>best<span style="font-weight: bold">.</span>f
+
+    node <span style="font-weight: bold">= </span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">)
+    </span>node<span style="font-weight: bold">.</span>f <span style="font-weight: bold">= </span>h<span style="font-weight: bold">(</span>node<span style="font-weight: bold">)
+    </span>result<span style="font-weight: bold">, </span>bestf <span style="font-weight: bold">= </span>RBFS<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>node<span style="font-weight: bold">, </span>infinity<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>result
+
+<span style="color: blue; font-weight: bold">def </span>hill_climbing<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""From the initial node, keep choosing the neighbor with highest value,
+    stopping when no neighbor is better. [Fig. 4.2]"""
+    </span>current <span style="font-weight: bold">= </span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">while True</span><span style="font-weight: bold">:
+        </span>neighbors <span style="font-weight: bold">= </span>current<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>neighbors<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">break
+        </span>neighbor <span style="font-weight: bold">= </span>argmax_random_tie<span style="font-weight: bold">(</span>neighbors<span style="font-weight: bold">,
+                                     </span><span style="color: blue; font-weight: bold">lambda </span>node<span style="font-weight: bold">: </span>problem<span style="font-weight: bold">.</span>value<span style="font-weight: bold">(</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span>problem<span style="font-weight: bold">.</span>value<span style="font-weight: bold">(</span>neighbor<span style="font-weight: bold">.</span>state<span style="font-weight: bold">) &lt;= </span>problem<span style="font-weight: bold">.</span>value<span style="font-weight: bold">(</span>current<span style="font-weight: bold">.</span>state<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">break
+        </span>current <span style="font-weight: bold">= </span>neighbor
+    <span style="color: blue; font-weight: bold">return </span>current<span style="font-weight: bold">.</span>state
+
+<span style="color: blue; font-weight: bold">def </span>exp_schedule<span style="font-weight: bold">(</span>k<span style="font-weight: bold">=</span><span style="color: red">20</span><span style="font-weight: bold">, </span>lam<span style="font-weight: bold">=</span><span style="color: red">0.005</span><span style="font-weight: bold">, </span>limit<span style="font-weight: bold">=</span><span style="color: red">100</span><span style="font-weight: bold">):
+    </span><span style="color: red">"One possible schedule function for simulated annealing"
+    </span><span style="color: blue; font-weight: bold">return lambda </span>t<span style="font-weight: bold">: </span>if_<span style="font-weight: bold">(</span>t <span style="font-weight: bold">&lt; </span>limit<span style="font-weight: bold">, </span>k <span style="font-weight: bold">* </span>math<span style="font-weight: bold">.</span>exp<span style="font-weight: bold">(-</span>lam <span style="font-weight: bold">* </span>t<span style="font-weight: bold">), </span><span style="color: red">0</span><span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>simulated_annealing<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>schedule<span style="font-weight: bold">=</span>exp_schedule<span style="font-weight: bold">()):
+    </span><span style="color: red">"[Fig. 4.5]"
+    </span>current <span style="font-weight: bold">= </span>Node<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">.</span>initial<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">for </span>t <span style="color: blue; font-weight: bold">in </span>xrange<span style="font-weight: bold">(</span>sys<span style="font-weight: bold">.</span>maxint<span style="font-weight: bold">):
+        </span>T <span style="font-weight: bold">= </span>schedule<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>T <span style="font-weight: bold">== </span><span style="color: red">0</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>current
+        neighbors <span style="font-weight: bold">= </span>current<span style="font-weight: bold">.</span>expand<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>neighbors<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>current
+        next <span style="font-weight: bold">= </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span>neighbors<span style="font-weight: bold">)
+        </span>delta_e <span style="font-weight: bold">= </span>problem<span style="font-weight: bold">.</span>value<span style="font-weight: bold">(</span>next<span style="font-weight: bold">.</span>state<span style="font-weight: bold">) - </span>problem<span style="font-weight: bold">.</span>value<span style="font-weight: bold">(</span>current<span style="font-weight: bold">.</span>state<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>delta_e <span style="font-weight: bold">&gt; </span><span style="color: red">0 </span><span style="color: blue; font-weight: bold">or </span>probability<span style="font-weight: bold">(</span>math<span style="font-weight: bold">.</span>exp<span style="font-weight: bold">(</span>delta_e<span style="font-weight: bold">/</span>T<span style="font-weight: bold">)):
+            </span>current <span style="font-weight: bold">= </span>next
+
+<span style="color: blue; font-weight: bold">def </span>and_or_graph_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 4.11]"
+    </span>unimplemented<span style="font-weight: bold">()
+
+</span><span style="color: blue; font-weight: bold">def </span>online_dfs_agent<span style="font-weight: bold">(</span>s1<span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 4.21]"
+    </span>unimplemented<span style="font-weight: bold">()
+
+</span><span style="color: blue; font-weight: bold">def </span>lrta_star_agent<span style="font-weight: bold">(</span>s1<span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 4.24]"
+    </span>unimplemented<span style="font-weight: bold">()
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+# Genetic Algorithm
+
+</span><span style="color: blue; font-weight: bold">def </span>genetic_search<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">, </span>fitness_fn<span style="font-weight: bold">, </span>ngen<span style="font-weight: bold">=</span><span style="color: red">1000</span><span style="font-weight: bold">, </span>pmut<span style="font-weight: bold">=</span><span style="color: red">0.1</span><span style="font-weight: bold">, </span>n<span style="font-weight: bold">=</span><span style="color: red">20</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Call genetic_algorithm on the appropriate parts of a problem.
+    This requires the problem to have states that can mate and mutate,
+    plus a value method that scores states."""
+    </span>s <span style="font-weight: bold">= </span>problem<span style="font-weight: bold">.</span>initial_state
+    states <span style="font-weight: bold">= [</span>problem<span style="font-weight: bold">.</span>result<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>a<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>a <span style="color: blue; font-weight: bold">in </span>problem<span style="font-weight: bold">.</span>actions<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)]
+    </span>random<span style="font-weight: bold">.</span>shuffle<span style="font-weight: bold">(</span>states<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>genetic_algorithm<span style="font-weight: bold">(</span>states<span style="font-weight: bold">[:</span>n<span style="font-weight: bold">], </span>problem<span style="font-weight: bold">.</span>value<span style="font-weight: bold">, </span>ngen<span style="font-weight: bold">, </span>pmut<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>genetic_algorithm<span style="font-weight: bold">(</span>population<span style="font-weight: bold">, </span>fitness_fn<span style="font-weight: bold">, </span>ngen<span style="font-weight: bold">=</span><span style="color: red">1000</span><span style="font-weight: bold">, </span>pmut<span style="font-weight: bold">=</span><span style="color: red">0.1</span><span style="font-weight: bold">):
+    </span><span style="color: red">"[Fig. 4.8]"
+    </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>ngen<span style="font-weight: bold">):
+        </span>new_population <span style="font-weight: bold">= []
+        </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>len<span style="font-weight: bold">(</span>population<span style="font-weight: bold">):
+            </span>fitnesses <span style="font-weight: bold">= </span>map<span style="font-weight: bold">(</span>fitness_fn<span style="font-weight: bold">, </span>population<span style="font-weight: bold">)
+            </span>p1<span style="font-weight: bold">, </span>p2 <span style="font-weight: bold">= </span>weighted_sample_with_replacement<span style="font-weight: bold">(</span>population<span style="font-weight: bold">, </span>fitnesses<span style="font-weight: bold">, </span><span style="color: red">2</span><span style="font-weight: bold">)
+            </span>child <span style="font-weight: bold">= </span>p1<span style="font-weight: bold">.</span>mate<span style="font-weight: bold">(</span>p2<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span>random<span style="font-weight: bold">.</span>uniform<span style="font-weight: bold">(</span><span style="color: red">0</span><span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">) &lt; </span>pmut<span style="font-weight: bold">:
+                </span>child<span style="font-weight: bold">.</span>mutate<span style="font-weight: bold">()
+            </span>new_population<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>child<span style="font-weight: bold">)
+        </span>population <span style="font-weight: bold">= </span>new_population
+    <span style="color: blue; font-weight: bold">return </span>argmax<span style="font-weight: bold">(</span>population<span style="font-weight: bold">, </span>fitness_fn<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">class </span>GAState<span style="font-weight: bold">:
+    </span><span style="color: red">"Abstract class for individuals in a genetic search."
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>genes<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>genes <span style="font-weight: bold">= </span>genes
+
+    <span style="color: blue; font-weight: bold">def </span>mate<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>other<span style="font-weight: bold">):
+        </span><span style="color: red">"Return a new individual crossing self and other."
+        </span>c <span style="font-weight: bold">= </span>random<span style="font-weight: bold">.</span>randrange<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>genes<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>__class__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>genes<span style="font-weight: bold">[:</span>c<span style="font-weight: bold">] + </span>other<span style="font-weight: bold">.</span>genes<span style="font-weight: bold">[</span>c<span style="font-weight: bold">:])
+
+    </span><span style="color: blue; font-weight: bold">def </span>mutate<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Change a few of my genes."
+        </span>abstract
+
+<span style="color: green; font-style: italic">#_____________________________________________________________________________
+# The remainder of this file implements examples for the search algorithms.
+
+#______________________________________________________________________________
+# Graphs and Graph Problems
+
+</span><span style="color: blue; font-weight: bold">class </span>Graph<span style="font-weight: bold">:
+    </span><span style="color: darkred">"""A graph connects nodes (verticies) by edges (links).  Each edge can also
+    have a length associated with it.  The constructor call is something like:
+        g = Graph({'A': {'B': 1, 'C': 2})
+    this makes a graph with 3 nodes, A, B, and C, with an edge of length 1 from
+    A to B,  and an edge of length 2 from A to C.  You can also do:
+        g = Graph({'A': {'B': 1, 'C': 2}, directed=False)
+    This makes an undirected graph, so inverse links are also added. The graph
+    stays undirected; if you add more links with g.connect('B', 'C', 3), then
+    inverse link is also added.  You can use g.nodes() to get a list of nodes,
+    g.get('A') to get a dict of links out of A, and g.get('A', 'B') to get the
+    length of the link from A to B.  'Lengths' can actually be any object at
+    all, and nodes can be any hashable object."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>dict<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>directed<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>dict <span style="font-weight: bold">= </span>dict <span style="color: blue; font-weight: bold">or </span><span style="font-weight: bold">{}
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>directed <span style="font-weight: bold">= </span>directed
+        <span style="color: blue; font-weight: bold">if not </span>directed<span style="font-weight: bold">: </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>make_undirected<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>make_undirected<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Make a digraph into an undirected graph by adding symmetric edges."
+        </span><span style="color: blue; font-weight: bold">for </span>a <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>dict<span style="font-weight: bold">.</span>keys<span style="font-weight: bold">():
+            </span><span style="color: blue; font-weight: bold">for </span><span style="font-weight: bold">(</span>b<span style="font-weight: bold">, </span>distance<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>dict<span style="font-weight: bold">[</span>a<span style="font-weight: bold">].</span>items<span style="font-weight: bold">():
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>connect1<span style="font-weight: bold">(</span>b<span style="font-weight: bold">, </span>a<span style="font-weight: bold">, </span>distance<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>connect<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>A<span style="font-weight: bold">, </span>B<span style="font-weight: bold">, </span>distance<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Add a link from A and B of given distance, and also add the inverse
+        link if the graph is undirected."""
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>connect1<span style="font-weight: bold">(</span>A<span style="font-weight: bold">, </span>B<span style="font-weight: bold">, </span>distance<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>directed<span style="font-weight: bold">: </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>connect1<span style="font-weight: bold">(</span>B<span style="font-weight: bold">, </span>A<span style="font-weight: bold">, </span>distance<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>connect1<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>A<span style="font-weight: bold">, </span>B<span style="font-weight: bold">, </span>distance<span style="font-weight: bold">):
+        </span><span style="color: red">"Add a link from A to B of given distance, in one direction only."
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>dict<span style="font-weight: bold">.</span>setdefault<span style="font-weight: bold">(</span>A<span style="font-weight: bold">,{})[</span>B<span style="font-weight: bold">] = </span>distance
+
+    <span style="color: blue; font-weight: bold">def </span>get<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>a<span style="font-weight: bold">, </span>b<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return a link distance or a dict of {node: distance} entries.
+        .get(a,b) returns the distance or None;
+        .get(a) returns a dict of {node: distance} entries, possibly {}."""
+        </span>links <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>dict<span style="font-weight: bold">.</span>setdefault<span style="font-weight: bold">(</span>a<span style="font-weight: bold">, {})
+        </span><span style="color: blue; font-weight: bold">if </span>b <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>links
+        <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span>links<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>b<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>nodes<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Return a list of nodes in the graph."
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>dict<span style="font-weight: bold">.</span>keys<span style="font-weight: bold">()
+
+</span><span style="color: blue; font-weight: bold">def </span>UndirectedGraph<span style="font-weight: bold">(</span>dict<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+    </span><span style="color: red">"Build a Graph where every edge (including future ones) goes both ways."
+    </span><span style="color: blue; font-weight: bold">return </span>Graph<span style="font-weight: bold">(</span>dict<span style="font-weight: bold">=</span>dict<span style="font-weight: bold">, </span>directed<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>RandomGraph<span style="font-weight: bold">(</span>nodes<span style="font-weight: bold">=</span>range<span style="font-weight: bold">(</span><span style="color: red">10</span><span style="font-weight: bold">), </span>min_links<span style="font-weight: bold">=</span><span style="color: red">2</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">=</span><span style="color: red">400</span><span style="font-weight: bold">, </span>height<span style="font-weight: bold">=</span><span style="color: red">300</span><span style="font-weight: bold">,
+                                </span>curvature<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">lambda</span><span style="font-weight: bold">: </span>random<span style="font-weight: bold">.</span>uniform<span style="font-weight: bold">(</span><span style="color: red">1.1</span><span style="font-weight: bold">, </span><span style="color: red">1.5</span><span style="font-weight: bold">)):
+    </span><span style="color: darkred">"""Construct a random graph, with the specified nodes, and random links.
+    The nodes are laid out randomly on a (width x height) rectangle.
+    Then each node is connected to the min_links nearest neighbors.
+    Because inverse links are added, some nodes will have more connections.
+    The distance between nodes is the hypotenuse times curvature(),
+    where curvature() defaults to a random number between 1.1 and 1.5."""
+    </span>g <span style="font-weight: bold">= </span>UndirectedGraph<span style="font-weight: bold">()
+    </span>g<span style="font-weight: bold">.</span>locations <span style="font-weight: bold">= {}
+    </span><span style="color: green; font-style: italic">## Build the cities
+    </span><span style="color: blue; font-weight: bold">for </span>node <span style="color: blue; font-weight: bold">in </span>nodes<span style="font-weight: bold">:
+        </span>g<span style="font-weight: bold">.</span>locations<span style="font-weight: bold">[</span>node<span style="font-weight: bold">] = (</span>random<span style="font-weight: bold">.</span>randrange<span style="font-weight: bold">(</span>width<span style="font-weight: bold">), </span>random<span style="font-weight: bold">.</span>randrange<span style="font-weight: bold">(</span>height<span style="font-weight: bold">))
+    </span><span style="color: green; font-style: italic">## Build roads from each city to at least min_links nearest neighbors.
+    </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>min_links<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>node <span style="color: blue; font-weight: bold">in </span>nodes<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>g<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>node<span style="font-weight: bold">)) &lt; </span>min_links<span style="font-weight: bold">:
+                </span>here <span style="font-weight: bold">= </span>g<span style="font-weight: bold">.</span>locations<span style="font-weight: bold">[</span>node<span style="font-weight: bold">]
+                </span><span style="color: blue; font-weight: bold">def </span>distance_to_node<span style="font-weight: bold">(</span>n<span style="font-weight: bold">):
+                    </span><span style="color: blue; font-weight: bold">if </span>n <span style="color: blue; font-weight: bold">is </span>node <span style="color: blue; font-weight: bold">or </span>g<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>node<span style="font-weight: bold">,</span>n<span style="font-weight: bold">): </span><span style="color: blue; font-weight: bold">return </span>infinity
+                    <span style="color: blue; font-weight: bold">return </span>distance<span style="font-weight: bold">(</span>g<span style="font-weight: bold">.</span>locations<span style="font-weight: bold">[</span>n<span style="font-weight: bold">], </span>here<span style="font-weight: bold">)
+                </span>neighbor <span style="font-weight: bold">= </span>argmin<span style="font-weight: bold">(</span>nodes<span style="font-weight: bold">, </span>distance_to_node<span style="font-weight: bold">)
+                </span>d <span style="font-weight: bold">= </span>distance<span style="font-weight: bold">(</span>g<span style="font-weight: bold">.</span>locations<span style="font-weight: bold">[</span>neighbor<span style="font-weight: bold">], </span>here<span style="font-weight: bold">) * </span>curvature<span style="font-weight: bold">()
+                </span>g<span style="font-weight: bold">.</span>connect<span style="font-weight: bold">(</span>node<span style="font-weight: bold">, </span>neighbor<span style="font-weight: bold">, </span>int<span style="font-weight: bold">(</span>d<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">return </span>g
+
+romania <span style="font-weight: bold">= </span>UndirectedGraph<span style="font-weight: bold">(</span>Dict<span style="font-weight: bold">(
+    </span>A<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>Z<span style="font-weight: bold">=</span><span style="color: red">75</span><span style="font-weight: bold">, </span>S<span style="font-weight: bold">=</span><span style="color: red">140</span><span style="font-weight: bold">, </span>T<span style="font-weight: bold">=</span><span style="color: red">118</span><span style="font-weight: bold">),
+    </span>B<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>U<span style="font-weight: bold">=</span><span style="color: red">85</span><span style="font-weight: bold">, </span>P<span style="font-weight: bold">=</span><span style="color: red">101</span><span style="font-weight: bold">, </span>G<span style="font-weight: bold">=</span><span style="color: red">90</span><span style="font-weight: bold">, </span>F<span style="font-weight: bold">=</span><span style="color: red">211</span><span style="font-weight: bold">),
+    </span>C<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>D<span style="font-weight: bold">=</span><span style="color: red">120</span><span style="font-weight: bold">, </span>R<span style="font-weight: bold">=</span><span style="color: red">146</span><span style="font-weight: bold">, </span>P<span style="font-weight: bold">=</span><span style="color: red">138</span><span style="font-weight: bold">),
+    </span>D<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>M<span style="font-weight: bold">=</span><span style="color: red">75</span><span style="font-weight: bold">),
+    </span>E<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>H<span style="font-weight: bold">=</span><span style="color: red">86</span><span style="font-weight: bold">),
+    </span>F<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>S<span style="font-weight: bold">=</span><span style="color: red">99</span><span style="font-weight: bold">),
+    </span>H<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>U<span style="font-weight: bold">=</span><span style="color: red">98</span><span style="font-weight: bold">),
+    </span>I<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>V<span style="font-weight: bold">=</span><span style="color: red">92</span><span style="font-weight: bold">, </span>N<span style="font-weight: bold">=</span><span style="color: red">87</span><span style="font-weight: bold">),
+    </span>L<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>T<span style="font-weight: bold">=</span><span style="color: red">111</span><span style="font-weight: bold">, </span>M<span style="font-weight: bold">=</span><span style="color: red">70</span><span style="font-weight: bold">),
+    </span>O<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>Z<span style="font-weight: bold">=</span><span style="color: red">71</span><span style="font-weight: bold">, </span>S<span style="font-weight: bold">=</span><span style="color: red">151</span><span style="font-weight: bold">),
+    </span>P<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>R<span style="font-weight: bold">=</span><span style="color: red">97</span><span style="font-weight: bold">),
+    </span>R<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>S<span style="font-weight: bold">=</span><span style="color: red">80</span><span style="font-weight: bold">),
+    </span>U<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>V<span style="font-weight: bold">=</span><span style="color: red">142</span><span style="font-weight: bold">)))
+</span>romania<span style="font-weight: bold">.</span>locations <span style="font-weight: bold">= </span>Dict<span style="font-weight: bold">(
+    </span>A<span style="font-weight: bold">=( </span><span style="color: red">91</span><span style="font-weight: bold">, </span><span style="color: red">492</span><span style="font-weight: bold">),    </span>B<span style="font-weight: bold">=(</span><span style="color: red">400</span><span style="font-weight: bold">, </span><span style="color: red">327</span><span style="font-weight: bold">),    </span>C<span style="font-weight: bold">=(</span><span style="color: red">253</span><span style="font-weight: bold">, </span><span style="color: red">288</span><span style="font-weight: bold">),   </span>D<span style="font-weight: bold">=(</span><span style="color: red">165</span><span style="font-weight: bold">, </span><span style="color: red">299</span><span style="font-weight: bold">),
+    </span>E<span style="font-weight: bold">=(</span><span style="color: red">562</span><span style="font-weight: bold">, </span><span style="color: red">293</span><span style="font-weight: bold">),    </span>F<span style="font-weight: bold">=(</span><span style="color: red">305</span><span style="font-weight: bold">, </span><span style="color: red">449</span><span style="font-weight: bold">),    </span>G<span style="font-weight: bold">=(</span><span style="color: red">375</span><span style="font-weight: bold">, </span><span style="color: red">270</span><span style="font-weight: bold">),   </span>H<span style="font-weight: bold">=(</span><span style="color: red">534</span><span style="font-weight: bold">, </span><span style="color: red">350</span><span style="font-weight: bold">),
+    </span>I<span style="font-weight: bold">=(</span><span style="color: red">473</span><span style="font-weight: bold">, </span><span style="color: red">506</span><span style="font-weight: bold">),    </span>L<span style="font-weight: bold">=(</span><span style="color: red">165</span><span style="font-weight: bold">, </span><span style="color: red">379</span><span style="font-weight: bold">),    </span>M<span style="font-weight: bold">=(</span><span style="color: red">168</span><span style="font-weight: bold">, </span><span style="color: red">339</span><span style="font-weight: bold">),   </span>N<span style="font-weight: bold">=(</span><span style="color: red">406</span><span style="font-weight: bold">, </span><span style="color: red">537</span><span style="font-weight: bold">),
+    </span>O<span style="font-weight: bold">=(</span><span style="color: red">131</span><span style="font-weight: bold">, </span><span style="color: red">571</span><span style="font-weight: bold">),    </span>P<span style="font-weight: bold">=(</span><span style="color: red">320</span><span style="font-weight: bold">, </span><span style="color: red">368</span><span style="font-weight: bold">),    </span>R<span style="font-weight: bold">=(</span><span style="color: red">233</span><span style="font-weight: bold">, </span><span style="color: red">410</span><span style="font-weight: bold">),   </span>S<span style="font-weight: bold">=(</span><span style="color: red">207</span><span style="font-weight: bold">, </span><span style="color: red">457</span><span style="font-weight: bold">),
+    </span>T<span style="font-weight: bold">=( </span><span style="color: red">94</span><span style="font-weight: bold">, </span><span style="color: red">410</span><span style="font-weight: bold">),    </span>U<span style="font-weight: bold">=(</span><span style="color: red">456</span><span style="font-weight: bold">, </span><span style="color: red">350</span><span style="font-weight: bold">),    </span>V<span style="font-weight: bold">=(</span><span style="color: red">509</span><span style="font-weight: bold">, </span><span style="color: red">444</span><span style="font-weight: bold">),   </span>Z<span style="font-weight: bold">=(</span><span style="color: red">108</span><span style="font-weight: bold">, </span><span style="color: red">531</span><span style="font-weight: bold">))
+
+</span>australia <span style="font-weight: bold">= </span>UndirectedGraph<span style="font-weight: bold">(</span>Dict<span style="font-weight: bold">(
+    </span>T<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(),
+    </span>SA<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>WA<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">, </span>NT<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">, </span>Q<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">, </span>NSW<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">, </span>V<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">),
+    </span>NT<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>WA<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">, </span>Q<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">),
+    </span>NSW<span style="font-weight: bold">=</span>Dict<span style="font-weight: bold">(</span>Q<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">, </span>V<span style="font-weight: bold">=</span><span style="color: red">1</span><span style="font-weight: bold">)))
+</span>australia<span style="font-weight: bold">.</span>locations <span style="font-weight: bold">= </span>Dict<span style="font-weight: bold">(</span>WA<span style="font-weight: bold">=(</span><span style="color: red">120</span><span style="font-weight: bold">, </span><span style="color: red">24</span><span style="font-weight: bold">), </span>NT<span style="font-weight: bold">=(</span><span style="color: red">135</span><span style="font-weight: bold">, </span><span style="color: red">20</span><span style="font-weight: bold">), </span>SA<span style="font-weight: bold">=(</span><span style="color: red">135</span><span style="font-weight: bold">, </span><span style="color: red">30</span><span style="font-weight: bold">),
+                           </span>Q<span style="font-weight: bold">=(</span><span style="color: red">145</span><span style="font-weight: bold">, </span><span style="color: red">20</span><span style="font-weight: bold">), </span>NSW<span style="font-weight: bold">=(</span><span style="color: red">145</span><span style="font-weight: bold">, </span><span style="color: red">32</span><span style="font-weight: bold">), </span>T<span style="font-weight: bold">=(</span><span style="color: red">145</span><span style="font-weight: bold">, </span><span style="color: red">42</span><span style="font-weight: bold">), </span>V<span style="font-weight: bold">=(</span><span style="color: red">145</span><span style="font-weight: bold">, </span><span style="color: red">37</span><span style="font-weight: bold">))
+
+</span><span style="color: blue; font-weight: bold">class </span>GraphProblem<span style="font-weight: bold">(</span>Problem<span style="font-weight: bold">):
+    </span><span style="color: red">"The problem of searching a graph from one node to another."
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>initial<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">, </span>graph<span style="font-weight: bold">):
+        </span>Problem<span style="font-weight: bold">.</span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>initial<span style="font-weight: bold">, </span>goal<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>graph <span style="font-weight: bold">= </span>graph
+
+    <span style="color: blue; font-weight: bold">def </span>actions<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>A<span style="font-weight: bold">):
+        </span><span style="color: red">"The actions at a graph node are just its neighbors."
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>graph<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>A<span style="font-weight: bold">).</span>keys<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>result<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span><span style="color: red">"The result of going to a neighbor is just that neighbor."
+        </span><span style="color: blue; font-weight: bold">return </span>action
+
+    <span style="color: blue; font-weight: bold">def </span>path_cost<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>cost_so_far<span style="font-weight: bold">, </span>A<span style="font-weight: bold">, </span>action<span style="font-weight: bold">, </span>B<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>cost_so_far <span style="font-weight: bold">+ (</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>graph<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>A<span style="font-weight: bold">,</span>B<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">or </span>infinity<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>h<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>node<span style="font-weight: bold">):
+        </span><span style="color: red">"h function is straight-line distance from a node's state to goal."
+        </span>locs <span style="font-weight: bold">= </span>getattr<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>graph<span style="font-weight: bold">, </span><span style="color: red">'locations'</span><span style="font-weight: bold">, </span><span style="color: blue">None</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>locs<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>int<span style="font-weight: bold">(</span>distance<span style="font-weight: bold">(</span>locs<span style="font-weight: bold">[</span>node<span style="font-weight: bold">.</span>state<span style="font-weight: bold">], </span>locs<span style="font-weight: bold">[</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>goal<span style="font-weight: bold">]))
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>infinity
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>NQueensProblem<span style="font-weight: bold">(</span>Problem<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""The problem of placing N queens on an NxN board with none attacking
+    each other.  A state is represented as an N-element array, where
+    a value of r in the c-th entry means there is a queen at column c,
+    row r, and a value of None means that the c-th column has not been
+    filled in yet.  We fill in columns left to right.
+    &gt;&gt;&gt; depth_first_tree_search(NQueensProblem(8))
+    &lt;Node [7, 3, 0, 2, 5, 1, 6, 4]&gt;
+    """
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>N<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>N <span style="font-weight: bold">= </span>N
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>initial <span style="font-weight: bold">= [</span><span style="color: blue">None</span><span style="font-weight: bold">] * </span>N
+
+    <span style="color: blue; font-weight: bold">def </span>actions<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: red">"In the leftmost empty column, try all non-conflicting rows."
+        </span><span style="color: blue; font-weight: bold">if </span>state<span style="font-weight: bold">[-</span><span style="color: red">1</span><span style="font-weight: bold">] </span><span style="color: blue; font-weight: bold">is not </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[] </span><span style="color: green; font-style: italic"># All columns filled; no successors
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>col <span style="font-weight: bold">= </span>state<span style="font-weight: bold">.</span>index<span style="font-weight: bold">(</span><span style="color: blue">None</span><span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>row <span style="color: blue; font-weight: bold">for </span>row <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>N<span style="font-weight: bold">)
+                    </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>conflicted<span style="font-weight: bold">(</span>state<span style="font-weight: bold">, </span>row<span style="font-weight: bold">, </span>col<span style="font-weight: bold">)]
+
+    </span><span style="color: blue; font-weight: bold">def </span>result<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">, </span>row<span style="font-weight: bold">):
+        </span><span style="color: red">"Place the next queen at the given row."
+        </span>col <span style="font-weight: bold">= </span>state<span style="font-weight: bold">.</span>index<span style="font-weight: bold">(</span><span style="color: blue">None</span><span style="font-weight: bold">)
+        </span>new <span style="font-weight: bold">= </span>state<span style="font-weight: bold">[:]
+        </span>new<span style="font-weight: bold">[</span>col<span style="font-weight: bold">] = </span>row
+        <span style="color: blue; font-weight: bold">return </span>new
+
+    <span style="color: blue; font-weight: bold">def </span>conflicted<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">, </span>row<span style="font-weight: bold">, </span>col<span style="font-weight: bold">):
+        </span><span style="color: red">"Would placing a queen at (row, col) conflict with anything?"
+        </span><span style="color: blue; font-weight: bold">return </span>any<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>conflict<span style="font-weight: bold">(</span>row<span style="font-weight: bold">, </span>col<span style="font-weight: bold">, </span>state<span style="font-weight: bold">[</span>c<span style="font-weight: bold">], </span>c<span style="font-weight: bold">)
+                   </span><span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>col<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>conflict<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>row1<span style="font-weight: bold">, </span>col1<span style="font-weight: bold">, </span>row2<span style="font-weight: bold">, </span>col2<span style="font-weight: bold">):
+        </span><span style="color: red">"Would putting two queens in (row1, col1) and (row2, col2) conflict?"
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>row1 <span style="font-weight: bold">== </span>row2 <span style="color: green; font-style: italic">## same row
+                </span><span style="color: blue; font-weight: bold">or </span>col1 <span style="font-weight: bold">== </span>col2 <span style="color: green; font-style: italic">## same column
+                </span><span style="color: blue; font-weight: bold">or </span>row1<span style="font-weight: bold">-</span>col1 <span style="font-weight: bold">== </span>row2<span style="font-weight: bold">-</span>col2  <span style="color: green; font-style: italic">## same \ diagonal
+                </span><span style="color: blue; font-weight: bold">or </span>row1<span style="font-weight: bold">+</span>col1 <span style="font-weight: bold">== </span>row2<span style="font-weight: bold">+</span>col2<span style="font-weight: bold">) </span><span style="color: green; font-style: italic">## same / diagonal
+
+    </span><span style="color: blue; font-weight: bold">def </span>goal_test<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: red">"Check if all columns filled, no conflicts."
+        </span><span style="color: blue; font-weight: bold">if </span>state<span style="font-weight: bold">[-</span><span style="color: red">1</span><span style="font-weight: bold">] </span><span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return False
+        return not </span>any<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>conflicted<span style="font-weight: bold">(</span>state<span style="font-weight: bold">, </span>state<span style="font-weight: bold">[</span>col<span style="font-weight: bold">], </span>col<span style="font-weight: bold">)
+                       </span><span style="color: blue; font-weight: bold">for </span>col <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>state<span style="font-weight: bold">)))
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+# Inverse Boggle: Search for a high-scoring Boggle board. A good domain for
+# iterative-repair and related search techniques, as suggested by Justin Boyan.
+
+</span>ALPHABET <span style="font-weight: bold">= </span><span style="color: red">'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+</span>cubes16 <span style="font-weight: bold">= [</span><span style="color: red">'FORIXB'</span><span style="font-weight: bold">, </span><span style="color: red">'MOQABJ'</span><span style="font-weight: bold">, </span><span style="color: red">'GURILW'</span><span style="font-weight: bold">, </span><span style="color: red">'SETUPL'</span><span style="font-weight: bold">,
+           </span><span style="color: red">'CMPDAE'</span><span style="font-weight: bold">, </span><span style="color: red">'ACITAO'</span><span style="font-weight: bold">, </span><span style="color: red">'SLCRAE'</span><span style="font-weight: bold">, </span><span style="color: red">'ROMASH'</span><span style="font-weight: bold">,
+           </span><span style="color: red">'NODESW'</span><span style="font-weight: bold">, </span><span style="color: red">'HEFIYE'</span><span style="font-weight: bold">, </span><span style="color: red">'ONUDTK'</span><span style="font-weight: bold">, </span><span style="color: red">'TEVIGN'</span><span style="font-weight: bold">,
+           </span><span style="color: red">'ANEDVZ'</span><span style="font-weight: bold">, </span><span style="color: red">'PINESH'</span><span style="font-weight: bold">, </span><span style="color: red">'ABILYT'</span><span style="font-weight: bold">, </span><span style="color: red">'GKYLEU'</span><span style="font-weight: bold">]
+
+</span><span style="color: blue; font-weight: bold">def </span>random_boggle<span style="font-weight: bold">(</span>n<span style="font-weight: bold">=</span><span style="color: red">4</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return a random Boggle board of size n x n.
+    We represent a board as a linear list of letters."""
+    </span>cubes <span style="font-weight: bold">= [</span>cubes16<span style="font-weight: bold">[</span>i <span style="font-weight: bold">% </span><span style="color: red">16</span><span style="font-weight: bold">] </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>n<span style="font-weight: bold">*</span>n<span style="font-weight: bold">)]
+    </span>random<span style="font-weight: bold">.</span>shuffle<span style="font-weight: bold">(</span>cubes<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>map<span style="font-weight: bold">(</span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">, </span>cubes<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic"># The best 5x5 board found by Boyan, with our word list this board scores
+# 2274 words, for a score of 9837
+
+</span>boyan_best <span style="font-weight: bold">= </span>list<span style="font-weight: bold">(</span><span style="color: red">'RSTCSDEIAEGNLRPEATESMSSID'</span><span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>print_boggle<span style="font-weight: bold">(</span>board<span style="font-weight: bold">):
+    </span><span style="color: red">"Print the board in a 2-d array."
+    </span>n2 <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>board<span style="font-weight: bold">)</span>; n <span style="font-weight: bold">= </span>exact_sqrt<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>i <span style="font-weight: bold">% </span>n <span style="font-weight: bold">== </span><span style="color: red">0 </span><span style="color: blue; font-weight: bold">and </span>i <span style="font-weight: bold">&gt; </span><span style="color: red">0</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print
+        if </span>board<span style="font-weight: bold">[</span>i<span style="font-weight: bold">] == </span><span style="color: red">'Q'</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'Qu'</span><span style="font-weight: bold">,
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span>str<span style="font-weight: bold">(</span>board<span style="font-weight: bold">[</span>i<span style="font-weight: bold">]) + </span><span style="color: red">' '</span><span style="font-weight: bold">,
+    </span><span style="color: blue; font-weight: bold">print
+
+def </span>boggle_neighbors<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">, </span>cache<span style="font-weight: bold">={}):
+    </span><span style="color: darkred">"""Return a list of lists, where the i-th element is the list of indexes
+    for the neighbors of square i."""
+    </span><span style="color: blue; font-weight: bold">if </span>cache<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>cache<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">)
+    </span>n <span style="font-weight: bold">= </span>exact_sqrt<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">)
+    </span>neighbors <span style="font-weight: bold">= [</span><span style="color: blue">None</span><span style="font-weight: bold">] * </span>n2
+    <span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">):
+        </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">] = []
+        </span>on_top <span style="font-weight: bold">= </span>i <span style="font-weight: bold">&lt; </span>n
+        on_bottom <span style="font-weight: bold">= </span>i <span style="font-weight: bold">&gt;= </span>n2 <span style="font-weight: bold">- </span>n
+        on_left <span style="font-weight: bold">= </span>i <span style="font-weight: bold">% </span>n <span style="font-weight: bold">== </span><span style="color: red">0
+        </span>on_right <span style="font-weight: bold">= (</span>i<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">) % </span>n <span style="font-weight: bold">== </span><span style="color: red">0
+        </span><span style="color: blue; font-weight: bold">if not </span>on_top<span style="font-weight: bold">:
+            </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">- </span>n<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if not </span>on_left<span style="font-weight: bold">:  </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">- </span>n <span style="font-weight: bold">- </span><span style="color: red">1</span><span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if not </span>on_right<span style="font-weight: bold">: </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">- </span>n <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>on_bottom<span style="font-weight: bold">:
+            </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">+ </span>n<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if not </span>on_left<span style="font-weight: bold">:  </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">+ </span>n <span style="font-weight: bold">- </span><span style="color: red">1</span><span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if not </span>on_right<span style="font-weight: bold">: </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">+ </span>n <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>on_left<span style="font-weight: bold">: </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">- </span><span style="color: red">1</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>on_right<span style="font-weight: bold">: </span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>append<span style="font-weight: bold">(</span>i <span style="font-weight: bold">+ </span><span style="color: red">1</span><span style="font-weight: bold">)
+    </span>cache<span style="font-weight: bold">[</span>n2<span style="font-weight: bold">] = </span>neighbors
+    <span style="color: blue; font-weight: bold">return </span>neighbors
+
+<span style="color: blue; font-weight: bold">def </span>exact_sqrt<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">):
+    </span><span style="color: red">"If n2 is a perfect square, return its square root, else raise error."
+    </span>n <span style="font-weight: bold">= </span>int<span style="font-weight: bold">(</span>math<span style="font-weight: bold">.</span>sqrt<span style="font-weight: bold">(</span>n2<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">assert </span>n <span style="font-weight: bold">* </span>n <span style="font-weight: bold">== </span>n2
+    <span style="color: blue; font-weight: bold">return </span>n
+
+<span style="color: green; font-style: italic">#_____________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>Wordlist<span style="font-weight: bold">:
+    </span><span style="color: darkred">"""This class holds a list of words. You can use (word in wordlist)
+    to check if a word is in the list, or wordlist.lookup(prefix)
+    to see if prefix starts any of the words in the list."""
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>filename<span style="font-weight: bold">, </span>min_len<span style="font-weight: bold">=</span><span style="color: red">3</span><span style="font-weight: bold">):
+        </span>lines <span style="font-weight: bold">= </span>open<span style="font-weight: bold">(</span>filename<span style="font-weight: bold">).</span>read<span style="font-weight: bold">().</span>upper<span style="font-weight: bold">().</span>split<span style="font-weight: bold">()
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>words <span style="font-weight: bold">= [</span>word <span style="color: blue; font-weight: bold">for </span>word <span style="color: blue; font-weight: bold">in </span>lines <span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>word<span style="font-weight: bold">) &gt;= </span>min_len<span style="font-weight: bold">]
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>words<span style="font-weight: bold">.</span>sort<span style="font-weight: bold">()
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>bounds <span style="font-weight: bold">= {}
+        </span><span style="color: blue; font-weight: bold">for </span>c <span style="color: blue; font-weight: bold">in </span>ALPHABET<span style="font-weight: bold">:
+            </span>c2 <span style="font-weight: bold">= </span>chr<span style="font-weight: bold">(</span>ord<span style="font-weight: bold">(</span>c<span style="font-weight: bold">) + </span><span style="color: red">1</span><span style="font-weight: bold">)
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>bounds<span style="font-weight: bold">[</span>c<span style="font-weight: bold">] = (</span>bisect<span style="font-weight: bold">.</span>bisect<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>words<span style="font-weight: bold">, </span>c<span style="font-weight: bold">),
+                              </span>bisect<span style="font-weight: bold">.</span>bisect<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>words<span style="font-weight: bold">, </span>c2<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>lookup<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>prefix<span style="font-weight: bold">, </span>lo<span style="font-weight: bold">=</span><span style="color: red">0</span><span style="font-weight: bold">, </span>hi<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""See if prefix is in dictionary, as a full word or as a prefix.
+        Return two values: the first is the lowest i such that
+        words[i].startswith(prefix), or is None; the second is
+        True iff prefix itself is in the Wordlist."""
+        </span>words <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>words
+        <span style="color: blue; font-weight: bold">if </span>hi <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">: </span>hi <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>words<span style="font-weight: bold">)
+        </span>i <span style="font-weight: bold">= </span>bisect<span style="font-weight: bold">.</span>bisect_left<span style="font-weight: bold">(</span>words<span style="font-weight: bold">, </span>prefix<span style="font-weight: bold">, </span>lo<span style="font-weight: bold">, </span>hi<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>i <span style="font-weight: bold">&lt; </span>len<span style="font-weight: bold">(</span>words<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span>words<span style="font-weight: bold">[</span>i<span style="font-weight: bold">].</span>startswith<span style="font-weight: bold">(</span>prefix<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>i<span style="font-weight: bold">, (</span>words<span style="font-weight: bold">[</span>i<span style="font-weight: bold">] == </span>prefix<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None</span><span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">False
+
+    def </span>__contains__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>word<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>lookup<span style="font-weight: bold">(</span>word<span style="font-weight: bold">)[</span><span style="color: red">1</span><span style="font-weight: bold">]
+
+    </span><span style="color: blue; font-weight: bold">def </span>__len__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>words<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#_____________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">class </span>BoggleFinder<span style="font-weight: bold">:
+    </span><span style="color: darkred">"""A class that allows you to find all the words in a Boggle board. """
+
+    </span>wordlist <span style="font-weight: bold">= </span><span style="color: blue">None </span><span style="color: green; font-style: italic">## A class variable, holding a wordlist
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>board<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>BoggleFinder<span style="font-weight: bold">.</span>wordlist <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span>BoggleFinder<span style="font-weight: bold">.</span>wordlist <span style="font-weight: bold">= </span>Wordlist<span style="font-weight: bold">(</span><span style="color: red">"../data/EN-text/wordlist"</span><span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found <span style="font-weight: bold">= {}
+        </span><span style="color: blue; font-weight: bold">if </span>board<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>set_board<span style="font-weight: bold">(</span>board<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>set_board<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>board<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: red">"Set the board, and find all the words in it."
+        </span><span style="color: blue; font-weight: bold">if </span>board <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span>board <span style="font-weight: bold">= </span>random_boggle<span style="font-weight: bold">()
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>board <span style="font-weight: bold">= </span>board
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>neighbors <span style="font-weight: bold">= </span>boggle_neighbors<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>board<span style="font-weight: bold">))
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found <span style="font-weight: bold">= {}
+        </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>board<span style="font-weight: bold">)):
+            </span>lo<span style="font-weight: bold">, </span>hi <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>wordlist<span style="font-weight: bold">.</span>bounds<span style="font-weight: bold">[</span>board<span style="font-weight: bold">[</span>i<span style="font-weight: bold">]]
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>find<span style="font-weight: bold">(</span>lo<span style="font-weight: bold">, </span>hi<span style="font-weight: bold">, </span>i<span style="font-weight: bold">, [], </span><span style="color: red">''</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self
+
+    </span><span style="color: blue; font-weight: bold">def </span>find<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>lo<span style="font-weight: bold">, </span>hi<span style="font-weight: bold">, </span>i<span style="font-weight: bold">, </span>visited<span style="font-weight: bold">, </span>prefix<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Looking in square i, find the words that continue the prefix,
+        considering the entries in self.wordlist.words[lo:hi], and not
+        revisiting the squares in visited."""
+        </span><span style="color: blue; font-weight: bold">if </span>i <span style="color: blue; font-weight: bold">in </span>visited<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return
+        </span>wordpos<span style="font-weight: bold">, </span>is_word <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>wordlist<span style="font-weight: bold">.</span>lookup<span style="font-weight: bold">(</span>prefix<span style="font-weight: bold">, </span>lo<span style="font-weight: bold">, </span>hi<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>wordpos <span style="color: blue; font-weight: bold">is not </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span>is_word<span style="font-weight: bold">:
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found<span style="font-weight: bold">[</span>prefix<span style="font-weight: bold">] = </span><span style="color: blue; font-weight: bold">True
+            </span>visited<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>i<span style="font-weight: bold">)
+            </span>c <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>board<span style="font-weight: bold">[</span>i<span style="font-weight: bold">]
+            </span><span style="color: blue; font-weight: bold">if </span>c <span style="font-weight: bold">== </span><span style="color: red">'Q'</span><span style="font-weight: bold">: </span>c <span style="font-weight: bold">= </span><span style="color: red">'QU'
+            </span>prefix <span style="font-weight: bold">+= </span>c
+            <span style="color: blue; font-weight: bold">for </span>j <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>neighbors<span style="font-weight: bold">[</span>i<span style="font-weight: bold">]:
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>find<span style="font-weight: bold">(</span>wordpos<span style="font-weight: bold">, </span>hi<span style="font-weight: bold">, </span>j<span style="font-weight: bold">, </span>visited<span style="font-weight: bold">, </span>prefix<span style="font-weight: bold">)
+            </span>visited<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>words<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"The words found."
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found<span style="font-weight: bold">.</span>keys<span style="font-weight: bold">()
+
+    </span>scores <span style="font-weight: bold">= [</span><span style="color: red">0</span><span style="font-weight: bold">, </span><span style="color: red">0</span><span style="font-weight: bold">, </span><span style="color: red">0</span><span style="font-weight: bold">, </span><span style="color: red">0</span><span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">, </span><span style="color: red">2</span><span style="font-weight: bold">, </span><span style="color: red">3</span><span style="font-weight: bold">, </span><span style="color: red">5</span><span style="font-weight: bold">] + [</span><span style="color: red">11</span><span style="font-weight: bold">] * </span><span style="color: red">100
+
+    </span><span style="color: blue; font-weight: bold">def </span>score<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"The total score for the words found, according to the rules."
+        </span><span style="color: blue; font-weight: bold">return </span>sum<span style="font-weight: bold">([</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>scores<span style="font-weight: bold">[</span>len<span style="font-weight: bold">(</span>w<span style="font-weight: bold">)] </span><span style="color: blue; font-weight: bold">for </span>w <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>words<span style="font-weight: bold">()])
+
+    </span><span style="color: blue; font-weight: bold">def </span>__len__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: red">"The number of words found."
+        </span><span style="color: blue; font-weight: bold">return </span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found<span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#_____________________________________________________________________________
+
+</span><span style="color: blue; font-weight: bold">def </span>boggle_hill_climbing<span style="font-weight: bold">(</span>board<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>ntimes<span style="font-weight: bold">=</span><span style="color: red">100</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Solve inverse Boggle by hill-climbing: find a high-scoring board by
+    starting with a random one and changing it."""
+    </span>finder <span style="font-weight: bold">= </span>BoggleFinder<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">if </span>board <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+        </span>board <span style="font-weight: bold">= </span>random_boggle<span style="font-weight: bold">()
+    </span>best <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>finder<span style="font-weight: bold">.</span>set_board<span style="font-weight: bold">(</span>board<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">for </span>_ <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>ntimes<span style="font-weight: bold">):
+        </span>i<span style="font-weight: bold">, </span>oldc <span style="font-weight: bold">= </span>mutate_boggle<span style="font-weight: bold">(</span>board<span style="font-weight: bold">)
+        </span>new <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>finder<span style="font-weight: bold">.</span>set_board<span style="font-weight: bold">(</span>board<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span>new <span style="font-weight: bold">&gt; </span>best<span style="font-weight: bold">:
+            </span>best <span style="font-weight: bold">= </span>new
+            <span style="color: blue; font-weight: bold">if </span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span>best<span style="font-weight: bold">, </span>_<span style="font-weight: bold">, </span>board
+        <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>board<span style="font-weight: bold">[</span>i<span style="font-weight: bold">] = </span>oldc <span style="color: green; font-style: italic">## Change back
+    </span><span style="color: blue; font-weight: bold">if </span>verbose<span style="font-weight: bold">:
+        </span>print_boggle<span style="font-weight: bold">(</span>board<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">return </span>board<span style="font-weight: bold">, </span>best
+
+<span style="color: blue; font-weight: bold">def </span>mutate_boggle<span style="font-weight: bold">(</span>board<span style="font-weight: bold">):
+    </span>i <span style="font-weight: bold">= </span>random<span style="font-weight: bold">.</span>randrange<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>board<span style="font-weight: bold">))
+    </span>oldc <span style="font-weight: bold">= </span>board<span style="font-weight: bold">[</span>i<span style="font-weight: bold">]
+    </span>board<span style="font-weight: bold">[</span>i<span style="font-weight: bold">] = </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span>cubes16<span style="font-weight: bold">)) </span><span style="color: green; font-style: italic">##random.choice(boyan_best)
+    </span><span style="color: blue; font-weight: bold">return </span>i<span style="font-weight: bold">, </span>oldc
+
+<span style="color: green; font-style: italic">#______________________________________________________________________________
+
+# Code to compare searchers on various problems.
+
+</span><span style="color: blue; font-weight: bold">class </span>InstrumentedProblem<span style="font-weight: bold">(</span>Problem<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Delegates to a problem, and keeps statistics."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>problem<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>problem <span style="font-weight: bold">= </span>problem
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>succs <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>goal_tests <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>states <span style="font-weight: bold">= </span><span style="color: red">0
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found <span style="font-weight: bold">= </span><span style="color: blue">None
+
+    </span><span style="color: blue; font-weight: bold">def </span>actions<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>succs <span style="font-weight: bold">+= </span><span style="color: red">1
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>problem<span style="font-weight: bold">.</span>actions<span style="font-weight: bold">(</span>state<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>result<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>states <span style="font-weight: bold">+= </span><span style="color: red">1
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>problem<span style="font-weight: bold">.</span>result<span style="font-weight: bold">(</span>state<span style="font-weight: bold">, </span>action<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>goal_test<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>goal_tests <span style="font-weight: bold">+= </span><span style="color: red">1
+        </span>result <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>problem<span style="font-weight: bold">.</span>goal_test<span style="font-weight: bold">(</span>state<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>result<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found <span style="font-weight: bold">= </span>state
+        <span style="color: blue; font-weight: bold">return </span>result
+
+    <span style="color: blue; font-weight: bold">def </span>path_cost<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>c<span style="font-weight: bold">, </span>state1<span style="font-weight: bold">, </span>action<span style="font-weight: bold">, </span>state2<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>problem<span style="font-weight: bold">.</span>path_cost<span style="font-weight: bold">(</span>c<span style="font-weight: bold">, </span>state1<span style="font-weight: bold">, </span>action<span style="font-weight: bold">, </span>state2<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>value<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>state<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>problem<span style="font-weight: bold">.</span>value<span style="font-weight: bold">(</span>state<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>__getattr__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>attr<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span>getattr<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>problem<span style="font-weight: bold">, </span>attr<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>__repr__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'&lt;%4d/%4d/%4d/%s&gt;' </span><span style="font-weight: bold">% (</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>succs<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>goal_tests<span style="font-weight: bold">,
+                                     </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>states<span style="font-weight: bold">, </span>str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>found<span style="font-weight: bold">)[:</span><span style="color: red">4</span><span style="font-weight: bold">])
+
+</span><span style="color: blue; font-weight: bold">def </span>compare_searchers<span style="font-weight: bold">(</span>problems<span style="font-weight: bold">, </span>header<span style="font-weight: bold">,
+                      </span>searchers<span style="font-weight: bold">=[</span>breadth_first_tree_search<span style="font-weight: bold">,
+                                 </span>breadth_first_search<span style="font-weight: bold">, </span>depth_first_graph_search<span style="font-weight: bold">,
+                                 </span>iterative_deepening_search<span style="font-weight: bold">,
+                                 </span>depth_limited_search<span style="font-weight: bold">,
+                                 </span>recursive_best_first_search<span style="font-weight: bold">]):
+    </span><span style="color: blue; font-weight: bold">def </span>do<span style="font-weight: bold">(</span>searcher<span style="font-weight: bold">, </span>problem<span style="font-weight: bold">):
+        </span>p <span style="font-weight: bold">= </span>InstrumentedProblem<span style="font-weight: bold">(</span>problem<span style="font-weight: bold">)
+        </span>searcher<span style="font-weight: bold">(</span>p<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>p
+    table <span style="font-weight: bold">= [[</span>name<span style="font-weight: bold">(</span>s<span style="font-weight: bold">)] + [</span>do<span style="font-weight: bold">(</span>s<span style="font-weight: bold">, </span>p<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>p <span style="color: blue; font-weight: bold">in </span>problems<span style="font-weight: bold">] </span><span style="color: blue; font-weight: bold">for </span>s <span style="color: blue; font-weight: bold">in </span>searchers<span style="font-weight: bold">]
+    </span>print_table<span style="font-weight: bold">(</span>table<span style="font-weight: bold">, </span>header<span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>compare_graph_searchers<span style="font-weight: bold">():
+    </span><span style="color: darkred">"""Prints a table of results like this:
+&gt;&gt;&gt; compare_graph_searchers()
+Searcher                      Romania(A, B)        Romania(O, N)         Australia          
+breadth_first_tree_search     &lt;  21/  22/  59/B&gt;   &lt;1158/1159/3288/N&gt;    &lt;   7/   8/  22/WA&gt;
+breadth_first_search          &lt;   7/  11/  18/B&gt;   &lt;  19/  20/  45/N&gt;    &lt;   2/   6/   8/WA&gt;
+depth_first_graph_search      &lt;   8/   9/  20/B&gt;   &lt;  16/  17/  38/N&gt;    &lt;   4/   5/  11/WA&gt;
+iterative_deepening_search    &lt;  11/  33/  31/B&gt;   &lt; 656/1815/1812/N&gt;    &lt;   3/  11/  11/WA&gt;
+depth_limited_search          &lt;  54/  65/ 185/B&gt;   &lt; 387/1012/1125/N&gt;    &lt;  50/  54/ 200/WA&gt;
+recursive_best_first_search   &lt;   5/   6/  15/B&gt;   &lt;5887/5888/16532/N&gt;   &lt;  11/  12/  43/WA&gt;"""
+    </span>compare_searchers<span style="font-weight: bold">(</span>problems<span style="font-weight: bold">=[</span>GraphProblem<span style="font-weight: bold">(</span><span style="color: red">'A'</span><span style="font-weight: bold">, </span><span style="color: red">'B'</span><span style="font-weight: bold">, </span>romania<span style="font-weight: bold">),
+                                </span>GraphProblem<span style="font-weight: bold">(</span><span style="color: red">'O'</span><span style="font-weight: bold">, </span><span style="color: red">'N'</span><span style="font-weight: bold">, </span>romania<span style="font-weight: bold">),
+                                </span>GraphProblem<span style="font-weight: bold">(</span><span style="color: red">'Q'</span><span style="font-weight: bold">, </span><span style="color: red">'WA'</span><span style="font-weight: bold">, </span>australia<span style="font-weight: bold">)],
+            </span>header<span style="font-weight: bold">=[</span><span style="color: red">'Searcher'</span><span style="font-weight: bold">, </span><span style="color: red">'Romania(A, B)'</span><span style="font-weight: bold">, </span><span style="color: red">'Romania(O, N)'</span><span style="font-weight: bold">, </span><span style="color: red">'Australia'</span><span style="font-weight: bold">])
+
+</span><span style="color: green; font-style: italic">#______________________________________________________________________________
+
+</span>__doc__ <span style="font-weight: bold">+= </span><span style="color: darkred">"""
+&gt;&gt;&gt; ab = GraphProblem('A', 'B', romania)
+&gt;&gt;&gt; breadth_first_tree_search(ab).solution()
+['S', 'F', 'B']
+&gt;&gt;&gt; breadth_first_search(ab).solution()
+['S', 'F', 'B']
+&gt;&gt;&gt; uniform_cost_search(ab).solution()
+['S', 'R', 'P', 'B']
+&gt;&gt;&gt; depth_first_graph_search(ab).solution()
+['T', 'L', 'M', 'D', 'C', 'P', 'B']
+&gt;&gt;&gt; iterative_deepening_search(ab).solution()
+['S', 'F', 'B']
+&gt;&gt;&gt; len(depth_limited_search(ab).solution())
+50
+&gt;&gt;&gt; astar_search(ab).solution()
+['S', 'R', 'P', 'B']
+&gt;&gt;&gt; recursive_best_first_search(ab).solution()
+['S', 'R', 'P', 'B']
+
+&gt;&gt;&gt; board = list('SARTELNID')
+&gt;&gt;&gt; print_boggle(board)
+S  A  R 
+T  E  L 
+N  I  D 
+&gt;&gt;&gt; f = BoggleFinder(board)
+&gt;&gt;&gt; len(f)
+206
+"""
+
+</span>__doc__ <span style="font-weight: bold">+= </span>random_tests<span style="font-weight: bold">(</span><span style="color: darkred">"""
+&gt;&gt;&gt; ' '.join(f.words())
+'LID LARES DEAL LIE DIETS LIN LINT TIL TIN RATED ERAS LATEN DEAR TIE LINE INTER STEAL LATED LAST TAR SAL DITES RALES SAE RETS TAE RAT RAS SAT IDLE TILDES LEAST IDEAS LITE SATED TINED LEST LIT RASE RENTS TINEA EDIT EDITS NITES ALES LATE LETS RELIT TINES LEI LAT ELINT LATI SENT TARED DINE STAR SEAR NEST LITAS TIED SEAT SERAL RATE DINT DEL DEN SEAL TIER TIES NET SALINE DILATE EAST TIDES LINTER NEAR LITS ELINTS DENI RASED SERA TILE NEAT DERAT IDLEST NIDE LIEN STARED LIER LIES SETA NITS TINE DITAS ALINE SATIN TAS ASTER LEAS TSAR LAR NITE RALE LAS REAL NITER ATE RES RATEL IDEA RET IDEAL REI RATS STALE DENT RED IDES ALIEN SET TEL SER TEN TEA TED SALE TALE STILE ARES SEA TILDE SEN SEL ALINES SEI LASE DINES ILEA LINES ELD TIDE RENT DIEL STELA TAEL STALED EARL LEA TILES TILER LED ETA TALI ALE LASED TELA LET IDLER REIN ALIT ITS NIDES DIN DIE DENTS STIED LINER LASTED RATINE ERA IDLES DIT RENTAL DINER SENTI TINEAL DEIL TEAR LITER LINTS TEAL DIES EAR EAT ARLES SATE STARE DITS DELI DENTAL REST DITE DENTIL DINTS DITA DIET LENT NETS NIL NIT SETAL LATS TARE ARE SATI'
+
+&gt;&gt;&gt; boggle_hill_climbing(list('ABCDEFGHI'), verbose=False)
+(['E', 'P', 'R', 'D', 'O', 'A', 'G', 'S', 'T'], 123)
+"""</span><span style="font-weight: bold">)
+</span>
+    </pre>
+    </body>
+    </html>
+    

@@ -1,0 +1,785 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<title>Project 3: Using Logic to Hunt the Wumpus</title>
+<link href="projects.css" rel="stylesheet" type="text/css">
+</head>
+
+<body>
+<h2>Project 3: Using Logic to Hunt the Wumpus</h2>
+
+<blockquote>
+<center>
+<img src="figs/wumpus-magic.jpeg" height="290px" /> &nbsp;&nbsp;&nbsp;
+<img src="figs/grand-theft-wumpus.jpeg" height="270px"
+verticle-align="center" />
+<br><br>
+<img src="figs/wumpus-cave.jpeg" height="250px" align="middle" />
+</center>
+<p><cite><center>I smell a wumpus,<br>
+Time to infer my next move,<br>
+Find gold, and escape.</center></cite></p>
+</blockquote>
+
+<h3>Introduction</h3>
+
+<p>A total of 32 points can be earned over the course of this
+project, but only 24 points are needed to get full credits; any points
+over (8 more possible) will count as extra credit.  (There is no
+specific part of the project that is extra credit; complete everything
+you can!)</p>
+
+<p>In this project, you will build a propositional logic (PL) agent
+capable of solving a variant of the <a
+ href="http://en.wikipedia.org/wiki/Hunt_the_Wumpus">Hunt The
+Wumpus</a> game.  This will include constructing the agent's knowledge
+base and implementing simple search routines the agent uses for
+planning.</p>
+
+<p>The code for this project consists of several Python files, some of
+which you will need to read and understand in order to complete the
+assignment, and some of which you can mostly ignore.  You can download
+all the code an supporting files (including this description) as a <a
+ href="wumpus.zip">zip archive</a>.</p>
+
+<p><b>NOTE:</b> The abreviation <b>AIMA</b> used below refers to the
+Stuart Russell and Peter Norvig's book <a
+ href="http://aima.cs.berkeley.edu/">Artificial Intelligence: A Modern
+Approach, 3rd Edition</a>, as well as the associated python code
+available from their <a
+ href="https://code.google.com/p/aima-python/">google code
+repository</a> (However, all files needed for Project 3 are included
+in the <a
+ href="wumpus.zip">zip archive</a>; do not replace the
+files here with the AIMA files as in two cases I have slightly modified
+the AIMA code).</p>
+
+<h5>Files you will edit and submit</h5>
+
+<table border="0" cellpadding="10">
+
+  <tr><td><code><a
+   href="docs/wumpus_kb.html">wumpus_kb.py</a></code></td>
+  <td>Contains code to generate the wumpus knowledge base.  You need
+  to fill in most of these functions!</td></tr>
+
+  <tr><td><code><a
+       href="docs/wumpus_planners.html">wumpus_planners.py</a></code></td>
+      <td>Contains code to perform <code>plan_route</code> and
+      <code>plan_shot</code>.  You need to fill in code to implement
+      the <code>PlanRouteProblem</code> and
+      <code>PlanShotProblem</code>.  See <code><a
+       href="docs/search.html">search.py</a></code> for
+      <code>Problem</code> parent class and examples.</td></tr>
+      </table>
+
+<h5>Files you will likely want to look at:</h5>
+
+<table border="0" cellpadding="10">
+
+  <tr><td><code><a href="docs/wumpus.html">wumpus.py</a></code></td>
+   <td>The main file to execute the Hunt The Wumpus game.  Contains
+   code for generating <code>WumpusWorldScenario</code>s that combine
+   a <code>WumpusEnvironment</code> and agent (either
+   <code>Explorer</code> or <code>HybridWumpusAgent</code>) to play
+   the game.  Includes agent programs to drive game play manually
+   (with and without a knowledge base).  Also includes
+   <code>__main__</code> command-line interface.</td></tr>
+
+   <tr><td><code>
+   <a href="docs/wumpus_environment.html">wumpus_environment.py</a>
+   </code></td><td>Implements main classes of the wumpus domain.  The
+   <code>Explorer</code> agent is a simple wumpus hunter agent that
+   does not have a knowledge base.  The <code>WumpusEnvironment</code>
+   implements the physics and game play of the Hunt The Wumpus
+   game.</td></tr>
+   
+  <tr><td><code> <a
+   href="docs/wumpus_agent.html">wumpus_agent.py</a></code></td>
+  <td>Defines the <code>HybridWumpusAgent</code> (extends
+  <code>Explorer</code>).  This agent includes a knowledge base.  The
+  <code>agent_program</code> implements a hierarchy of reflexes that
+  are executed depending on the percepts and knowledge state.  This
+  includes calls to <code>plan_route</code> and <code>plan_shot</code>
+  that you will implement in <code><a
+   href="docs/wumpus_planners.html">wumpus_planners.py</a></code>.</td></tr>
+  
+  <tr><td><code><a href="docs/logic.html">logic.py</a></code></td>
+  <td>AIMA code implementing propositional (PL) and first-order (FOL)
+  logic language components and various inference algorithms.  You
+  will want to look at the relevant PL implementation.  <b>NOTE:</b> I
+  have modified this file slightly from the original AIMA
+  release.</td></tr>
+
+  <tr><td><code><a href="docs/search.html">search.py</a></code></td>
+  <td>AIMA code setting up basic search facilities; includes
+  <code>Problem</code> class that you will implement in <code><a
+   href="docs/wumpus_planners.html">wumpus_planners.py</a></code> for
+  <code>plan_route</code> and <code>plan_shot</code>.</td></tr>
+
+</table>
+
+<h5>Files you likely don't need to look at:</h5>
+
+<table border="0" cellpadding="10">
+
+  <tr><td><code><a href="docs/minisat.html">minisat.py</a></code></td>
+   <td>Implements the interface to MiniSat, including translating AIMA
+   PL clauses into <a
+    href="http://people.sc.fsu.edu/~jburkardt/data/cnf/cnf.html">DIMACS
+   CNF</a>, generating the DIMACS file read by MiniSat, using python's
+   <code>sys</code> interface to call MiniSat, and reading the MiniSat
+   results.</td></tr>
+  
+  <tr><td><code><a href="docs/agents.html">agents.py</a></code></td>
+  <td>AIMA code for the generic Agent and Environment framework.</td></tr>
+
+  <tr><td><code><a href="docs/utils.html">utils.py</a></code></td>
+  <td>AIMA code providing utilities used by other AIMA modules.
+  <b>NOTE:</b> I have modified this file slightly from the original
+  AIMA release.</td></tr>
+
+</table>
+
+<p><strong>What to submit:</strong> You will fill in portions of
+<code><a href="docs/wumpus_kb.html">wumpus_kb.py</a></code> and <code>
+<a href="docs/wumpus_planners.html">wumpus_planners.py</a></code>
+during the assignment.  You should submit these two files along
+with a <code>partners.txt</code> file.  Here are <a
+ href="../submission-instructions.html">directions for
+submitting</a>.</p>
+
+<p><strong>Evaluation:</strong> Your code will be autograded for technical
+correctness. Please <em>do not</em> change the names of any provided
+functions or classes within the code, or you will wreak havoc on the
+autograder. However, the correctness of your implementation -- not the
+autograder's output -- will be the final judge of your score.  If
+necessary, we will review and grade assignments individually to ensure
+that you receive due credit for your work.</p>
+
+<p><strong>Academic Dishonesty:</strong> We will be checking your code
+against other submissions in the class for logical redundancy. If you
+copy someone else's code and submit it with minor changes, we will
+know. These cheat detectors are quite hard to fool, so please don't
+try. We trust you all to submit your own work only; <em>please</em>
+don't let us down. If you do, we will pursue the strongest
+consequences available to us.</p>
+
+<p><strong>Getting Help:</strong> You are not alone!  If you find
+yourself stuck  on something, contact me for help.  If you
+can't make our office hours, let us know and we will schedule a
+meeting time.  We want these projects to be rewarding and
+instructional, not frustrating and demoralizing.  But, we don't know
+when or how to help unless you ask.  One more piece of advice: if you
+don't know what a variable does or what kind of values it takes, print
+it out.</p>
+
+<h3> Notes on terminology </h3>
+
+<p>In the discussion and comments/docs in the code I freely switch
+between referring to the agent <b>knowledge base</b>, <b>KB</b>,
+<b>kb</b> and <b>agent.kb</b>.  These are all the same thing: the
+collective facilities for storing propositional logic sentences.</p>
+
+<p>I sometimes abbreviate <b>propositional logic</b> as <b>PL</b>.</p>
+
+<p>PL sentences expressed in <em>full</em> propositional logic are
+sentences that may include all of the standard PL connectives:
+<em>And/Conjunction</em> ('<code>&amp;</code>'),
+<em>Or/Disjunction</em> ('<code>|</code>'), <em>Not/Negation</em>
+('<code>~</code>'), <em>Conditional</em> ('<code>&gt;&gt;</code>'),
+and <em>Biconditional</em> ('<code><=></code>') (see <code><a
+ href="docs/logic.html">logic.py</a></code> for full details about the
+PL python implementation).  In the context of providing full PL
+sentences to the KB as rules for updating the agent's knowledge state,
+I will refer to these sentences as <b>axioms</b>.</p>
+
+<p>When PL sentences are added to the KB, they are immediately
+converted to conjunctive normal form, <b>CNF</b>.  This CNF
+representation is stored in the KB as a <em>list</em> of the
+individual disjunctive clauses (the list is treated as an implicit
+conjunction of its member clauses), and I will refer to the clauses in
+the list collectively as the KB <b>clauses</b>.  </p>
+
+<h3> Setup: Install MiniSat, download project code, and run test </h3>
+
+<p>This project relies on the light weight, open source, cross
+platform SAT solver MiniSat (<a
+ href="http://minisat.se">http://minisat.se</a>).  There are a variety
+of ways to obtain MiniSat; here are methods for the popular three
+platforms:</p>
+
+<ul>
+  <li><b>Mac OS X</b>: 
+  Several options:<br>
+  (a) install using brew (recommended: <a
+  href="http://brew.sh/">Homebrew</a>; may require first installing gcc<br>
+      <code>$ brew install gcc</code><br>
+      then<br>
+      <code>$ brew install minisat</code><br>
+  (b) install using port (<a
+  href="http://macports.org">http://macports.org</a>); or<br> 
+  (c) install from source following <a
+  href="https://groups.google.com/forum/#!msg/minisat/9bahgMrbshQ/MAFeTUd0gmIJ">these
+  instructions</a>.</li>
+  <li><b>Linux</b>: <a
+  href="http://packages.debian.org/squeeze/minisat2">Debian
+  package</a>; or take a look at
+  <a
+  href="https://groups.google.com/forum/?fromgroups=#!topic/minisat/bMyAAfrV4bg">this
+  discussion</a></li>
+  <li><b>Windows</b>: see <a href="http://web.cecs.pdx.edu/~hook/logicw11/Assignments/MinisatOnWindows.html">these instructions</a></li>
+</ul> 
+
+<p>After installing MiniSat, download the Project 3 zip archive
+  (<a href="wumpus.zip">wumpus.zip</a>) and unzip it (if you haven't
+  already), and change to the <em>wumpus</em> directory.  You can then
+  test the connection to MiniSat by executing the following from the
+  command-line:</p>
+
+<pre>python wumpus.py -t</pre>
+
+<p>The three simple tests should pass.  If they do not, or you get
+unexpected behavior, please contact me for help.</p>
+
+<h3> Welcome to the Wumpus Caves! </h3>
+
+<p>Having verified that the connection to MiniSat works, the next step
+is to familiarize yourself with the Hunt The Wumpus game.  Execute the
+following at the command-line to to play the game:</p>
+
+<pre>python wumpus.py</pre>
+
+<p>This launches the interactive command-line interface to the game,
+running in "Manual" mode: you control the wumpus hunting agent.
+Entering '<code>env</code>' at any point will display an ascii-art
+representation of the current Wumpus enviroment state.  For example, when
+executed in the first time tick, you will see:</p>
+
+<pre>
+     Scores: &lt;Explorer&gt;=0
+       0   1   2   3   4   5    time_step=0
+     |---|---|---|---|---|---|
+     | # | # | # | # | # | # | 5
+     |---|---|---|---|---|---|
+     | # |   |   |   |   | # | 4
+     |---|---|---|---|---|---|
+     | # | W | G | P |   | # | 3
+     |---|---|---|---|---|---|
+     | # |   |   |   |   | # | 2
+     |---|---|---|---|---|---|
+     | # | ^ |   | P |   | # | 1
+     |---|---|---|---|---|---|
+     | # | # | # | # | # | # | 0
+     |---|---|---|---|---|---|
+</pre>
+
+<p>At the top, the current score of the Wumpus hunting agent (in the
+default manual mode, represented as an &lt;Explorer&gt;) is displayed.
+The x coordinates of the Wumpus environment are displayed across the
+row above the grid, and the y coordinates are displayed down the
+right-side of the grid.  Each grid cell represents a wumpus cave room.
+'#' represents a wall, and 'W', 'P', and 'G' represent the Wumpus, a
+Pit, and the Gold, respectively.  The position of the wumpus hunter
+agent are represented by '^', '<code>&gt;</code>', 'v', and
+'<code>&lt;</code>', each of which show the direction (heading) the
+hunter agent is currently facing.  At the start, the agent is in
+location (1,1).</p>
+
+<p>Enter
+'<code>?</code>' at any time to see a complete list of commands.</p>
+
+<p>The goal of the game is to achieve the highest score.  Each move
+costs one point, shooting the arrow (irrespective of whether it kills
+the Wumpus) costs 10 points, and leaving the caves (accomplished by
+executing '<code>Climb</code>' in the same location that the hunter
+agent started in (the cave 'entrance') <em>with</em> the Gold (i.e.,
+having previously successfuly '<code>Grab</code>'bed the Gold), earns
+1000 points.  Dying, by entering a square with the Wumpus or a Pit,
+costs 1000 points.</p>
+
+<p>At each time step, the current percepts are represented by a list
+of the percept propositions ('~' represents that the proposition is
+currently False).  For example, at time 0 (indicated in the brackets
+on the left) the percepts for the environment depicted above are:</p>
+
+<pre>
+[0] You perceive: ['~Stench', '~Breeze', '~Glitter', '~Bump','~Scream']
+</pre>
+
+<p>Play several games and see how the Wumpus environment state
+determines the percepts.  Try dying by moving into the Wumpus square
+or a Pit.  Shoot the Wumpus: you must execute '<code>Shoot</code>'
+while facing the Wumpus; when successful, the Wumpus will die and the
+following time step you will perceive the '<code>Scream</code>'; also
+note that the Wumpus is no longr represented by 'W', instead replaced
+by an 'X'.  It is now safe to move into the Wumpus square.  Also solve
+the game by moving to the Gold, executing '<code>Grab</code>', and
+move back to the exit/entrance and execute '<code>Climb</code>'.</p>
+
+<p>You can load different Wumpus environment layouts by specifying
+either the name of an existing layout in the <a
+ href="layouts/">wumpus/layouts/</a> directory (currently there are
+only two provided), or by specifying the path to a layout, using this
+command-line option:</p>
+
+<pre>python wumpus.py -l 'wumpus_4x4_book'</pre>
+
+<p>(You can optionally specify the layout extension '.lay'.)  The
+format of a layout specification file is very simple; here's an
+example:</p>
+
+<pre>
+.,.,.,.
+W,G,P,.
+.,.,.,.
+A,.,P,.
+</pre>
+
+<p>The file format specifies the Wumpus environment grid as a series
+of comma-separated wumpus-room specifications, with each row
+representing a row of rooms in the Wumpus environment.  '.' represents
+an empty wumpus room, 'W' places a Wumpus (the knowledge base you will
+create below can only accommodate presence of exactly 1 Wumpus, no
+more or less, but in the manual game you can have multiple Wumpi), 'P'
+places a Pit, 'G' places the Gold (again, the KB will only support
+Grabbing 1 Gold), and 'A' is the location of the Wumpus hunting Agent
+(The Agent's heading is specified separately in code; North, or '^',
+is the default).  You can also add Walls, represented by '#'.  By
+default, the specified layout will be automatically surrounded by
+Walls when the Wumpus environment is constructed.</p>
+
+<p>Take a look at the code comments and examples in <code><a
+ href="docs/wumpus.html">wumpus.py</a></code> to see how to construct
+a WumpusWorldScenario from a layout file or by specifying directly in
+code by constructing objects and assigning them to Wumpus environment
+locations.</p>
+
+<h4>General comments about the code structure and command-line options</h4>
+
+<p>There are two main classes that together make a working version of
+the Hunt the Wumpus game: the <code>WumpusEnvironment</code> and an
+instance of an agent are combined in a
+<code>WumpusWorldScenario</code>, defined in <code><a
+ href="docs/wumpus.html">wumpus.py</a></code>.</p>
+
+<ul>
+  <li>The <code>WumpusEnvironment</code>, defined in <code><a
+ href="docs/wumpus_environment.html">wumpus_environment.py</a></code>,
+represents the Wumpus cave environment, the position and state of all
+objects, and enforces the rules of the game (the game 'physics'), such
+as the effects of agent actions.  The <code>step()</code> method
+advances the game one time step and includes calling the Wumpus hunter
+agent's <code>agent_program</code>.</li>
+
+<li>There are two classes that define Wumpus hunter agents.  The
+<code>Explorer</code>, also defined in <code><a
+href="docs/wumpus_environment.html">wumpus_environment.py</a></code>,
+provides a minimal hunter agent skeleton, while the
+<code>HybridWumpusAgent</code>, defined in <code><a
+href="docs/wumpus_agent.html">wumpus_agent.py</a></code>,
+is a full agent implementation and includes a knowledge base and set
+of reflexes sufficient to solve any Hunt the Wumpus game (once you
+provide some code).</li>
+</ul>
+
+<p>The main action of a wumpus hunter agent happens in its
+<code>agent_program</code>.  There are three different
+<code>agent_program</code>s provided:</p>
+
+<ol type="1">
+  
+  <li>The function <code>with_manual_program</code> (in <code><a
+href="docs/wumpus.html">wumpus.py</a></code>) takes an agent as input
+  and replaces its <code>agent_program</code> with a "manual"
+  <code>agent_program</code> in which the agent waits for commands
+  from the command-line at each step.  This is the agent that is run
+  when launching the game from the command-line with (with or without
+  the '<code>-l</code>' layout file option):
+  <pre>python wumpus.py</pre>
+  This version is most useful for playing the game and verifying you
+  understand the "physics" of the Wumpus environment (i.e., the
+  effects ofa ctions of states of the world and subsequent
+  percepts).</li>
+
+  <li>The function <code>with_manual_kb_program</code> (also in <code><a
+href="docs/wumpus.html">wumpus.py</a></code>) works similar to
+  <code>with_manual_program</code> except the agent also creates a
+  knowledge base and the <code>agent_program</code> updates a
+  knowledge base with new percepts and the action selected (by the
+  human user) at each step.  The user can also issue any relevant
+  query about propositions in the knowledge base.  This option is most
+  useful for developing and debugging the axioms you provide for
+  initializing and updating the knowledge-based.  This version of the
+  agent program can be run by executing the following from the
+  command-line (inside the wumpus/ directory):
+  <pre>python wumpus.py -k</pre>
+  (You can also combine this with the '<code>-l</code>' option to load
+  a specific layout.) Once launched, enter '<code>?</code>' to get the
+list of commands and complete list of available query types.</li>
+
+<li>The <code>HybridWumpusAgent</code> (HWA) class is defined in <code><a
+href="docs/wumpus_agent.html">wumpus_agent.py</a></code> (it is a
+subclass of the <code>Explorer</code>).  The HWA defines an
+<code>agent_program</code> that implements the Wumpus agent as
+specified in Figure 7.20, page 270 of AIMA.  Once you have correctly implemented the knowledge base
+axiom generators (in <code><a
+href="docs/wumpus_kb.html">wumpus_kb.py</a></code>), and the
+<code>PlanRouteProblem</code> and <code>PlanShotProblem</code> methods (all
+in <code><a
+href="docs/wumpus_planners.html">wumpus_planners.py</a></code>), the
+HWA <code>agent_program</code> will be able to solve any (solvable)
+instance of the Hunt The Wumpus game.  The HWA and its
+<code>agent_program</code> can be run from the command-line (inside
+the wumpus/ directory) with:
+<pre>python wumpus.py -y</pre>
+(Again, you can also combine this with the '<code>-l</code>' option;
+however, '<code>-y</code>' option will override the '<code>-k</code>'
+option, if included).  When run, the HWA <code>agent_program</code>
+will select all actions, so there is nothing for the human user to do
+but watch.  As with the above options, the output to screen is
+intentionally very verbose so that you can follow along with each step
+in the execution.
+<br><br>
+To see what "correct" behavior should look like, I have provided the
+output of two runs of the fully-implemented HWA, running on the <a href="layouts/">two
+provided layouts</a>: <a
+href="examples/HWA_lay_book_run.txt">HWA_lay_book_run.txt</a> and <a
+href="examples/HWA_lay_2_run.txt">HWA_lay_2_run.txt</a>.
+<br><br>
+Also note that the number of clauses in the KB grows as the agent
+takes actions in the environment. This is expected: at each time step,
+new axioms are added to the knowledge base in order to represent
+change (based on percepts and actions).  You will be implementing
+these axiom generators.  The following two figures graphically show
+the growth in the number of clauses and the time it takes to make one
+kind of query (current location) over the 30 steps of the <a
+href="examples/HWA_lay_2_run.txt">HWA_lay_2_run.txt</a> run.
+</li>
+
+</ol>
+
+<center>
+<img src="figs/clauses-over-epochs-2.png" height="260px" />
+<img src="figs/query-time-over-epochs-2.png" height="260px" />
+</center>
+
+<p><b>NOTE:</b> While you can construct layout sepcifications (either
+in layout files or in code) in any dimensions, it is recommend that
+you follow these general constraints (mainly due to working with the
+knowledge base; for general manual play without a KB, any size is fine):
+
+<ul>
+  <li>Do not create environments smaller than two rooms, as the knowledge
+base assumes there is 1 and only 1 Wumpus, so a 1-room cave would
+necessarily put the Wumpus in the same location as the entrance,
+leading to a contradiction!</li>
+  <li>Do not create environments greater than 16 rooms, as the KB will
+grow in size too quickly and inference will bog down.)</li>
+</ul>
+
+<h4>Development</h4>
+
+<p>As the knowledge base and agent planner(s) developer, you have
+several choices as to how to proceed with development.  The manual
+command-line interfaces to the wumpus game, defined above and
+implemented in <code><a href="docs/wumpus.html">wumpus.py</a></code>,
+were designed to be a way by which you can directly observe the impact
+of code changes on knowledge base inference and agent behavior.
+However, you may find some or all development easier by incrementally
+instantiating and testing parts of the code; in this case, start with
+the <code>WumpusWorldScenario</code> to see how the main pieces are
+put together.</p>
+
+
+<h3>Propositional logic in python</h3>
+
+<p>The two agent programs you will be working with (found either in
+ <code>with_manual_kb_program</code> in <code><a
+  href="docs/wumpus.html">wumpus.py</a></code> or the
+ <code>HybridWumpusAgent</code> (HWA) class defined in <code><a
+  href="docs/wumpus_agent.html">wumpus_agent.py</a></code>) make use
+ of the <code>PropKB_SAT</code> knowledge base.  This is defined in
+ <code><a href="docs/wumpus_agent.html">wumpus_agent.py</a></code> and
+ is a subclass the <code>PropKB</code> class defined in <code><a
+  href="docs/logic.html">logic.py</a></code>.  As you'll see, these
+ are actually quite simple, implementing the <code>tell()</code>
+ method to add new sentences to the knowledge base, and the
+ <code>ask()</code> method to query the knowledge base
+ (<code>ask()</code> is an interface MiniSat).  Assertions made to the
+ knowledge base (often starting as PL syntax expressed in a string)
+ are stored in the <code>clauses</code> field of the KB, and that is
+ just a python list!  (Robust implementations of propositional KBs
+ have much more sophisticated storage).  Representation of the
+ assertions (sentences) themselves are built on top of the AIMA
+ implementation of propositional logic.  As you will be implementing
+ axiom generators, it is important you understand how propositional
+ sentences, initially expressed in strings, are turned into the
+ underlying propositional logic representations.  Take a look in
+ <code><a href="docs/logic.html">logic.py</a></code>.  In particular,
+ the following excerpt from the python prompt demonstrates some of the
+ basic functionality.</p>
+
+<blockquote>
+<pre>
+In [1]: import logic
+
+In [2]: a = '(A & B) >> ( ~(C | D) <=> E )'
+
+In [3]: e = logic.expr(a)
+
+In [4]: e
+Out[4]: ((A & B) >> (~(C | D) <=> E))
+
+In [5]: c = logic.to_cnf(e)
+
+In [6]: c
+Out[6]: ((~C | ~E | ~A | ~B) & (~D | ~E | ~A | ~B) & (E | C | D | ~A | ~B))
+
+In [7]: logic.conjuncts(c)
+Out[7]: [(~C | ~E | ~A | ~B), (~D | ~E | ~A | ~B), (E | C | D | ~A | ~B)]
+</pre>
+</blockquote>
+
+<p>On line 2, I express a propositional sentence in a string, in the
+syntax of the AIMA propositional language.  See the <code>Expr</code>
+class in <code><a href="docs/logic.html">logic.py</a></code>.  The
+function <code>expr()</code> parses that string and builds an
+<code>Expr</code>.  The <code>Expr</code> object is designed to have a
+"pretty" python representation, an example of which is on line 4 above
+(this is accomplished by the definition of the <code>__repr__()</code>
+method in Expr; see <a
+ href="http://stackoverflow.com/questions/1984162/purpose-of-pythons-repr">this
+explanation</a>).  But keep in mind that this is an object!  It has
+two main fields: the operator, <code>op</code>, and a list of
+arguments to the operator, <code>args</code>.  Since the variable
+<code>e</code> currently references the Expr, we can inspect the
+<code>op</code> and <code>args</code> as follows:</p>
+
+<blockquote>
+<pre>
+In [10]: e.op
+Out[10]: '>>'
+
+In [11]: e.args
+Out[11]: [(A & B), (~(C | D) <=> E)]
+</pre>
+</blockquote>
+
+<p>This shows that the Expr <code>e</code> refers to has as its
+operator the conditional symbol, and its args have two entries, the
+first being the antecedent to the conditional, in this case <code>A
+&amp; B</code>, and the second is is the consequent, <code>~(C | D)
+<=> E</code>.  Each of these are also Exprs, with the first having the
+conjunction operator, <code>'&amp;'</code>, with two args
+<code>A</code> and <code>B</code>.  In this way, our original Expr
+referred to by <code>e</code> is actually the root of an Expr tree,
+allowing for representation of arbitrarily complex sentences.</p>
+
+<p>Be sure to look at the docs for <code>Expr</code> and
+<code>expr()</code> in <code><a
+ href="docs/logic.html">logic.py</a></code> to understand how the PL
+syntax will be parsed from a string, in particular the note in the
+docs of <code>expr()</code> about operator precedence: <code>expr('P &
+Q ==> R & S')</code> will be parsed as <code>((P & (Q >> R)) &
+S)</code>, which may not be what you intended!  To get the expected
+operator precedence enforced (i.e., <code>&</code> with higher
+precedence than <code>==></code>), you must use <code>expr('(P & Q)
+==> (R & S)')</code>.  In general, it is best to use parentheses to
+enforce the precedence you intend!</p>
+
+<p>Moving on with the original example, on line 5 I convert the full
+PL sentence into conjunctive normal form using the
+<code>to_cnf()</code> function; line 6 shows the result.  This is still
+an <code>Expr</code> object; also it is completely logically
+equivalent to the previous form expressed on lines 2 and 4.  Whenever
+an Expr is <code>tell()</code>ed to the KB, the Expr will be converted
+to CNF.  Then the conjuncts of the CNF will be extracted so that what
+is stored in the <code>clauses</code> store of the KB is a list of the
+individual clauses of the CNF.  This is demonstrated on line 7.</p>
+
+<p>Finally, a note about the use of MiniSat.  MiniSat is a SAT solver,
+meaning that it searches for the a satisfying assignment to a set of
+CNF clauses, return True if such an assignment is found (and in
+MiniSat's case, it also returns the satisfying assignment), or False
+if no assignment is found.  This is a good building block but not by
+itself sufficient for propositional inference.  In our case, we will
+not be doing full proposition inference, but instead asking whether
+individual propositions are entailed (True) or not (False) by the KB,
+or whether their truth cannot be determined.  In order to determine
+which of these three possible outcomes is the case, the
+<code>ask()</code> method of <code>PropKB_SAT</code> make <em>two</em>
+calls to minisat, one which which the query variable (the proposition
+who's truth we're trying to determine) is assumed to be True, and one
+where it is assume to be False, and in both cases minisat determines
+whether that assertion conjuncted with all of the clauses in the KB is
+satisfiable.  If the clauses + query are satisfiable in <em>both</em>
+cases, then that means the KB cannot determine whether the proposition
+is True or False.  On the other hand, if one call to minisat is
+satisfiable, but the other not, then the proposition's truth is which
+of the calls was satisfiable.  In general you won't have to worry
+about these details, but it is important to understand how this is
+working!</p>
+
+<h3>Construct the knowledge base</h3>
+
+<p>OK, time to get to work!  The first set of tasks is to fill in the
+axiom generators for the knowledge base.  For this part of the project
+you will work in <code><a
+ href="docs/wumpus_kb.html">wumpus_kb.py</a></code>, adding your code
+to all locations indicated by <code>"*** YOUR CODE HERE ***"</code>.
+You will notice a pattern here, all of the methods you are
+implementing start with "axiom_generator_..." in their name.  The doc
+strings to these functions describe the knowledge that you need to
+assert in propositional logic, with explanations of what the function
+arguments represent.  The return values are assumed to be strings
+representing the PL assertions.</p>
+
+<p>Section 7.7 of AIMA, starting on page 265, is a good guide for a
+number of the axioms you are required to implement.  But beware, it is
+incomplete!</p>
+
+<p>After the current percept sentence generator (which converts percept
+vectors into a sentence asserting percept propositions), there are two
+general classes of axiom generators you will construct: a set that
+generate axioms describing the initial state of knowledge, and axioms
+that represent changes over time (in particular, the successor-state
+axioms).</p>
+
+<p>The assertions your generators will make will be built out of
+propositions.  The first section of <code><a
+ href="docs/wumpus_kb.html">wumpus_kb.py</a></code> defines every
+proposition that will appear in the KB.  Because it would be very easy
+to add a malformed proposition symbol to the KB without knowing it, I
+have provided a set of proposition string builder functions, one for
+each type of proposition.  Even though it is more verbose to use
+function calls like <code>percept_breeze_str(3)</code> rather than
+just '<code>Breeze3</code>', you'll be better off, as the KB itself
+won't tell you if you happened to have mistakenly asserted
+'<code>Breez3</code>' (that's a misspelling!) -- the KB will happily
+accept it and you'll be left to find your mistake through painful
+debugging!  However, the choice is entirely up to you -- nothing about
+the grading will check whether you use these string-builders</p>
+
+<p>You will be working a lot with strings in this part of the
+project.  Here are general python string functions that I found useful
+while building my solution:</p>
+
+<ul>
+  <li>The  plus sign is overloaded: <code>'a' + 'b'</code> results
+  in <code>'ab'</code></li>
+  
+  <li>The <code>join</code> method is very handy; the first string the
+  join being called on will be inserted between the listed strings
+  being joined (use an empty string to just concatenate the list of
+  strings):
+
+  <ul>
+    <li><code>''.join(['a','b','c'])</code> results in
+    <code>'abc'</code></li>
+    <li><code>'-'.join(['a','b','c'])</code> results in 'a-b-c'</li>
+  </ul>
+  </li>
+
+  <li>The <code>format</code> method is your friend: <code>'string
+  with {0}{1}'.format('stu', 'ff')</code><br>results in <code>'string
+  with stuff'</code></li> </ul>
+
+<p>Points will be awarded, pending correct implementation, as follows
+  (for a total of 24 points):</p>
+<ul>
+  <li><code>axiom_generator_percept_sentence</code> = 1 pt</li>
+  <li><code>axiom_generator_initial_location_assertions</code> = 0.5 pt</li>
+  <!-- The following two are a little more involved, but once you
+       have one, the other is very similar, so
+       I'm distributing two points across them. -->
+  <li><code>axiom_generator_pits_and_breezes</code> = 1 pt</li>
+  <li><code>axiom_generator_wumpus_and_stench</code> = 1 pt</li>
+  <li><code>axiom_generator_at_least_one_wumpus</code> = 1 pt</li>
+  <li><code>axiom_generator_at_most_one_wumpus</code> = 1 pt</li>
+  <li><code>axiom_generator_only_in_one_location</code> = 1 pt</li>
+  <li><code>axiom_generator_only_one_heading</code> = 1 pt</li>
+  <li><code>axiom_generator_have_arrow_and_wumpus_alive</code> = 0.5 pt</li>
+  <li><code>axiom_generator_location_OK</code> = 1 pt</li>
+  <li><code>axiom_generator_breeze_percept_and_location_property</code> = 1 pt</li>
+  <li><code>axiom_generator_stench_percept_and_location_property</code> = 1 pt</li>
+  <li><code>axiom_generator_at_location_ssa</code> = 4 pts</li>
+  <li><code>axiom_generator_have_arrow_ssa</code> = 1 pt</li>
+  <li><code>axiom_generator_wumpus_alive_ssa</code> = 1 pt</li>
+  <li><code>axiom_generator_heading_{north,east,south,west}_ssa</code> = 3 pts
+  (for the set)</li>
+  <li><code>axiom_generator_heading_only_{north,east,south,west}</code> = 2 pts
+  (for the set)</li>
+  <li><code>axiom_generator_only_one_action_axioms</code> = 2 pts</li>
+</ul>
+
+<p><b>NOTE:</b> While you are constructing the knowledge base
+generators, the KB should always be satisfiable.  If it ever becomes
+unsat, then something you have added is leading to a contradiction!
+That is always a problem.  To check for satisfiability of the KB, call
+the <code>minisat()</code> function in <code><a
+ href="docs/wumpus_agent.html">wumpus_agent.py</a></code> with just
+the KB clauses, e.g., <code>minisat(kb.clauses)</code>; when running
+the wumpus.py with a KB (option <code>-k</code>) from the
+command-line, you can enter the '<code>kbsat</code>' command to do the
+same thing.  Note, however, that just because the KB is satsifiable
+does not mean there are not other problems.</p>
+
+<h3>Implement route and shot planning</h3>
+
+<p>The second major task of Project 3 is to complete the
+  implementation of the route and shot planning for the Hybrid Wumpus
+  Agent.  Your coding will take place in <code><a
+   href="docs/wumpus_planners.html">wumpus_planners.py</a></code>.
+  The docs for <code>plan_route</code> and <code>plan_shot</code>
+  outline the problem, but the code to be added will be in the
+  <code>PlanRouteProblem</code> and <code>PlanShotProblem</code>
+  classes, both of which extend the search <code>Problem</code> class
+  (defined in <code><a href="docs/search.html">search.py</a></code>)
+  that serves as the interface to the AIMA search code.
+
+<p>The <code>goal_test</code> in both problems is initially set to
+  always return True, and both <code>plan_route</code> and
+  <code>plan_shot</code> will return empty action lists if finding a
+  solution fails.  This allows you to run the full Hybrid Wumpus Agent
+  even before these planning facilities are implemented, but obviously
+  you'll be changing things.</p>
+
+<p>Once implemented, both <code>plan_route</code> and
+  <code>plan_shot</code> will use the AIMA implementation of A*, which
+  is also defined in <code><a
+   href="docs/search.html">search.py</a></code> (as
+  <code>astar_search()</code>).</p>
+
+<p>It is recommended that you implement <code>PlanRouteProblem</code>
+  first, as much of the solution there can be used in
+  <code>PlanShotProblem</code>.  Remember, for the
+  <code>PlanShotProblem</code>, you only need to plan a path to the
+  closest location in which you will be facing the Wumpus.</p>
+
+<p>As noted in <code>plan_route</code> and <code>plan_shot</code>, the
+representation of a state is a triple representing the x, y
+location and heading, of the agent.  The heading is an integer of 0,
+1, 2, or 3, representing North, West, South, and East, respectively.
+Goals and allowed states, however, ignore heading, and thus are just
+lists of x,y tuples.  <code>manhattan_distance_with_heading()</code>
+has been provided; as the name suggests, it computes the Manhattan
+distance, but also adds in the cost of having to change the heading
+(i.e., turn to the correct orientation) before following the Manhattan
+path.</p>
+
+<p>Correct implementation of each search problems is worth 4 points each,
+for a total of 8 points.</p>
+
+<hr>
+
+<center><font size=+1>Good Luck and Happy Hunting!</font></center>
+
+<hr>
+<address></address>
+<!-- hhmts start -->Last modified: Mon Apr  1 23:18:43 MST 2013 <!-- hhmts end -->
+</body>
+</html>

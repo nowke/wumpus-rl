@@ -1,0 +1,490 @@
+<html>
+    <head>
+    <title>wumpus_agent.py</title>
+    </head>
+    <body>
+    <h3>wumpus_agent.py (<a href="../wumpus_agent.py">original</a>)</h3>
+    <hr>
+    <pre>
+<span style="color: green; font-style: italic"># wumpus_agent.py
+# ---------------
+# Licensing Information:
+# Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+# You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+# The Hunt The Wumpus AI project was developed at University of Arizona
+# by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+# This project extends the python code provided by Peter Norvig as part of
+# the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+# see http://aima.cs.berkeley.edu/code.html
+# In particular, the following files come directly from the AIMA python
+# code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+# ('logic.py' has been modified by Clay Morrison in locations with the
+# comment 'CTM')
+# The file ['minisat.py'] implements a slim system call wrapper to the minisat
+# (see http://minisat.se) SAT solver, and is directly based on the satispy
+# python project, see https://github.com/netom/satispy .
+
+</span><span style="color: blue; font-weight: bold">from </span>logic <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">from </span>wumpus_environment <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">from </span>wumpus_kb <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">from </span>wumpus_planners <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">import </span>minisat as msat
+<span style="color: blue; font-weight: bold">from </span>time <span style="color: blue; font-weight: bold">import </span>clock
+<span style="color: blue; font-weight: bold">import </span>sys
+
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>minisat<span style="font-weight: bold">(</span>clauses<span style="font-weight: bold">, </span>query <span style="font-weight: bold">= </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>variable <span style="font-weight: bold">= </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>value <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">, </span>verbose <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">""" Interface to minisat
+    &lt;query&gt; is simply added as to the list of &lt;clauses&gt;
+    
+    Set &lt;variable&gt; to a particular &lt;value&gt; in order to test SAT
+    assuming any instance of that variable has that value.
+    
+    Otherwise, with defaults, will perform normal SAT on &lt;clauses&gt;+&lt;query&gt;
+    """
+    </span>c <span style="font-weight: bold">= </span><span style="color: blue">None
+    </span><span style="color: blue; font-weight: bold">if </span>verbose<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'minisat({0}):'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>query<span style="font-weight: bold">),
+    </span><span style="color: blue; font-weight: bold">if not </span>query<span style="font-weight: bold">:
+        </span>c <span style="font-weight: bold">= </span>clauses
+    <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span>c <span style="font-weight: bold">= </span>clauses <span style="font-weight: bold">+ [</span>query<span style="font-weight: bold">]
+    </span>m <span style="font-weight: bold">= </span>msat<span style="font-weight: bold">.</span>Minisat<span style="font-weight: bold">()
+    </span>s <span style="font-weight: bold">= </span>m<span style="font-weight: bold">.</span>solve<span style="font-weight: bold">(</span>c<span style="font-weight: bold">, </span>variable<span style="font-weight: bold">, </span>value<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">if </span>verbose<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">print </span>s<span style="font-weight: bold">.</span>success
+    <span style="color: blue; font-weight: bold">return </span>s
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">class </span>PropKB_SAT<span style="font-weight: bold">(</span>PropKB<span style="font-weight: bold">):
+
+    </span><span style="color: blue; font-weight: bold">def </span>tell<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentence<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>sentence<span style="font-weight: bold">: </span>super<span style="font-weight: bold">(</span>PropKB_SAT<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">).</span>tell<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>load_sentences<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>sentences<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">for </span>sentence <span style="color: blue; font-weight: bold">in </span>sentences<span style="font-weight: bold">: </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>ask<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>query<span style="font-weight: bold">):
+        </span><span style="color: darkred">""" Assumes query is a single positive proposition """
+        </span><span style="color: blue; font-weight: bold">if </span>isinstance<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span>str<span style="font-weight: bold">):
+            </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+        </span>sT <span style="font-weight: bold">= </span>minisat<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">, </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>variable<span style="font-weight: bold">=</span>query<span style="font-weight: bold">, </span>value<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+        </span>sF <span style="font-weight: bold">= </span>minisat<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">, </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>variable<span style="font-weight: bold">=</span>query<span style="font-weight: bold">, </span>value<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>sT<span style="font-weight: bold">.</span>success <span style="font-weight: bold">== </span>sF<span style="font-weight: bold">.</span>success<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span>sT<span style="font-weight: bold">.</span>success
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">class </span>Proposition<span style="font-weight: bold">(</span>agents<span style="font-weight: bold">.</span>Thing<span style="font-weight: bold">):
+    </span><span style="color: darkred">""" Used for debugging, to display proposition in WumpusEnvironment """
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>name<span style="font-weight: bold">, </span>value <span style="font-weight: bold">= </span><span style="color: red">'?'</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>name <span style="font-weight: bold">= </span><span style="color: red">'{0}={1}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>name<span style="font-weight: bold">, </span>value<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>display<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>name
+
+    <span style="color: blue; font-weight: bold">def </span>to_string<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>name
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">class </span>HybridWumpusAgent<span style="font-weight: bold">(</span>Explorer<span style="font-weight: bold">):
+    </span><span style="color: red">"An agent for the wumpus world that does logical inference. [Fig. 7.19]"""
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>heading<span style="font-weight: bold">=</span><span style="color: red">'east'</span><span style="font-weight: bold">, </span>environment<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">, </span>keep_axioms<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>keep_axioms <span style="font-weight: bold">= </span>keep_axioms <span style="color: green; font-style: italic"># for debugging: if True, keep easier-to-read PL form
+        </span>super<span style="font-weight: bold">(</span>HybridWumpusAgent<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agent_program<span style="font-weight: bold">, </span>heading<span style="font-weight: bold">, </span>environment<span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>reset<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span>super<span style="font-weight: bold">(</span>HybridWumpusAgent<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>reset<span style="font-weight: bold">()
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan <span style="font-weight: bold">= []
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>unvisited <span style="font-weight: bold">= [(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">)
+                          </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">)
+                          </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">)]
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>create_wumpus_KB<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>number_of_clauses_over_epochs <span style="font-weight: bold">= []
+            </span><span style="color: green; font-style: italic"># current location is queried at each epoch, so collecting
+            # the times allows us to see how querying gets more expensive
+            # as the KB grows.
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_loc_query_times <span style="font-weight: bold">= []
+
+    </span><span style="color: blue; font-weight: bold">def </span>create_wumpus_KB<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"HWA.create_wumpus_KB(): adding initial wumpus axioms"
+        </span>axioms <span style="font-weight: bold">= </span>initial_wumpus_axioms<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">],</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">],
+                                       </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">,
+                                       </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>heading_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"    total number of axioms={0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">))
+        </span>kb <span style="font-weight: bold">= </span>PropKB_SAT<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">for </span>sentence <span style="color: blue; font-weight: bold">in </span>axioms<span style="font-weight: bold">:
+            </span>kb<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>keep_axioms<span style="font-weight: bold">:
+            </span>kb<span style="font-weight: bold">.</span>axioms <span style="font-weight: bold">= </span>axioms
+        <span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"    total number of clauses={0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">))
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>kb
+
+    <span style="color: blue; font-weight: bold">def </span>make_percept_sentence<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>raw_percepts<span style="font-weight: bold">):
+        </span>sentence <span style="font-weight: bold">= </span>axiom_generator_percept_sentence<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">,</span>raw_percepts<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.make_percept_sentence(): {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>sentence
+
+    <span style="color: blue; font-weight: bold">def </span>add_temporal_axioms<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"       HWA.add_temporal_axioms()"
+        </span>axioms <span style="font-weight: bold">= </span>generate_square_OK_axioms<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>ax_so_far <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"           number of location_OK axioms:         {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>ax_so_far<span style="font-weight: bold">)
+        </span>axioms <span style="font-weight: bold">+= </span>generate_breeze_percept_and_location_axioms<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+        </span>axioms <span style="font-weight: bold">+= </span>generate_stench_percept_and_location_axioms<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>new_ax_so_far <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">)
+            </span>perc_to_loc <span style="font-weight: bold">= </span>new_ax_so_far <span style="font-weight: bold">- </span>ax_so_far
+            <span style="color: blue; font-weight: bold">print </span><span style="color: red">"           number of percept_to_loc axioms:      {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>perc_to_loc<span style="font-weight: bold">)
+            </span>ax_so_far <span style="font-weight: bold">= </span>new_ax_so_far
+        axioms <span style="font-weight: bold">+= </span>generate_at_location_ssa<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">],</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">],
+                                           </span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">,
+                                           </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>heading_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>new_ax_so_far <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">)
+            </span>local_loc_at <span style="font-weight: bold">= </span>new_ax_so_far <span style="font-weight: bold">- </span>ax_so_far
+            <span style="color: blue; font-weight: bold">print </span><span style="color: red">"           number of at_location ssa axioms:     {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>local_loc_at<span style="font-weight: bold">)
+            </span>ax_so_far <span style="font-weight: bold">= </span>new_ax_so_far
+        axioms <span style="font-weight: bold">+= </span>generate_non_location_ssa<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>new_ax_so_far <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">)
+            </span>remaining_ssa_at_time <span style="font-weight: bold">= </span>new_ax_so_far <span style="font-weight: bold">- </span>ax_so_far
+            <span style="color: blue; font-weight: bold">print </span><span style="color: red">"           number of non-location ssa axioms:    {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>remaining_ssa_at_time<span style="font-weight: bold">)
+            </span>ax_so_far <span style="font-weight: bold">= </span>new_ax_so_far
+        axioms <span style="font-weight: bold">+= </span>generate_mutually_exclusive_axioms<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>new_ax_so_far <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">)
+            </span>mutually_exclusive <span style="font-weight: bold">= </span>new_ax_so_far <span style="font-weight: bold">- </span>ax_so_far
+            <span style="color: blue; font-weight: bold">print </span><span style="color: red">"           number of mutually_exclusive axioms:  {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>mutually_exclusive<span style="font-weight: bold">)
+        
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"       Total number of axioms being added:  {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>axioms<span style="font-weight: bold">))
+        
+        </span><span style="color: blue; font-weight: bold">for </span>sentence <span style="color: blue; font-weight: bold">in </span>axioms<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>sentence<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>keep_axioms<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>axioms <span style="font-weight: bold">+= </span>axioms
+
+    <span style="color: blue; font-weight: bold">def </span>wumpus_alive_query<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"       Ask if Wumpus is Alive:"
+        </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>state_wumpus_alive_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+        </span>result <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Is Wumpus Alive? : Unknown!   (This should be known)"
+            </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Is Wumpus Alive? : {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>result<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>find_OK_locations<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.find_OK_locations()"
+            
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>wumpus_alive_query<span style="font-weight: bold">()
+            
+            </span>display_env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+            </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span>safe_loc <span style="font-weight: bold">= []
+        </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+                </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>state_OK_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+                </span>result <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>result<span style="font-weight: bold">:
+                    </span>safe_loc<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                        </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span><span style="color: red">'?'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                        </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span>result<span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making OK location queries:" </span>\
+                  <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span>display_env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">, </span>title<span style="font-weight: bold">=</span><span style="color: red">"Find OK locations queries"</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>safe_loc
+
+    <span style="color: blue; font-weight: bold">def </span>update_unvisited_locations<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">""" This cheats in the sense of not being fully based on inference,
+        but is far more efficient
+        (1) relies on global record of unvisited states
+        (2) only checks for visiting based on the current time step
+            (rather than from the beginning of time)
+        Could make even more efficient by making no inference at all, by
+        keeping track of current belief location and just subtracting that
+        from self.unvisited.  But what's the fun in that ??! """
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.update_unvisited_locations()"
+            </span>display_env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+            </span>already_visited <span style="font-weight: bold">= [(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">)
+                               </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">)
+                               </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">)
+                               </span><span style="color: blue; font-weight: bold">if </span><span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">not in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>unvisited<span style="font-weight: bold">]
+            </span><span style="color: blue; font-weight: bold">for </span>vis_loc <span style="color: blue; font-weight: bold">in </span>already_visited<span style="font-weight: bold">:
+                </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span><span style="color: red">'~Vis'</span><span style="font-weight: bold">),</span><span style="color: red">'T'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+            </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">for </span><span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>unvisited<span style="font-weight: bold">:
+            </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>state_loc_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+            </span>vis_query_result <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span>vis_query_result<span style="font-weight: bold">:
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>unvisited<span style="font-weight: bold">.</span>remove<span style="font-weight: bold">((</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making unvisited locations" </span>\
+                  <span style="font-weight: bold">+ </span><span style="color: red">" queries: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">for </span>vis_loc <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>unvisited<span style="font-weight: bold">:
+                </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span><span style="color: red">'~Vis'</span><span style="font-weight: bold">),</span><span style="color: red">'F'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>unvisited
+
+    <span style="color: blue; font-weight: bold">def </span>display_locations_utility<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>locations<span style="font-weight: bold">, </span>prop<span style="font-weight: bold">=</span>state_loc_str<span style="font-weight: bold">,
+                                  </span>title<span style="font-weight: bold">=</span><span style="color: red">"Safe univisited locations:"</span><span style="font-weight: bold">):
+        </span>display_env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>x<span style="font-weight: bold">,</span>y <span style="color: blue; font-weight: bold">in </span>locations<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span>isinstance<span style="font-weight: bold">(</span>prop<span style="font-weight: bold">,</span>str<span style="font-weight: bold">):
+                </span>loc_prop <span style="font-weight: bold">= </span>prop <span style="font-weight: bold">+ </span><span style="color: red">'{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">((</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+            </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                </span>loc_prop <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>prop<span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+            </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>loc_prop<span style="font-weight: bold">,</span><span style="color: red">'T'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">print </span>display_env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">, </span>title<span style="font-weight: bold">=</span>title<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>find_possible_wumpus_locations<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.find_possible_wumpus_locations()"
+            </span>display_env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+            </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span>possible_wumpus_loc <span style="font-weight: bold">= []
+        </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+                </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>wumpus_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                </span>result <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">!= </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">:
+                    </span>possible_wumpus_loc<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                        </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span><span style="color: red">'?'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                        </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span>result<span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making possible wumpus location queries:" </span>\
+                  <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span>display_env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">, </span>title<span style="font-weight: bold">=</span><span style="color: red">"Possible Wumpus Location queries"</span><span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Possible locations: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>possible_wumpus_loc<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>possible_wumpus_loc
+
+    <span style="color: blue; font-weight: bold">def </span>find_not_unsafe_locations<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.find_not_unsafe_locations()"
+            </span>display_env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+            </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span>not_unsafe <span style="font-weight: bold">= []
+        </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+                </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>state_OK_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+                </span>result <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">!= </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">:
+                    </span>not_unsafe<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">!= </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">:
+                        </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                            </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span><span style="color: red">'?'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                            </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span><span style="color: red">'T'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making not unsafe location queries:" </span>\
+                  <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span>display_env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">, </span>title<span style="font-weight: bold">=</span><span style="color: red">"Not Unsafe Location queries"</span><span style="font-weight: bold">)
+            </span><span style="color: green; font-style: italic"># print "Not Unsafe locations: {0}".format(not_unsafe)
+        </span><span style="color: blue; font-weight: bold">return </span>not_unsafe
+
+    <span style="color: blue; font-weight: bold">def </span>infer_and_set_belief_location<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location <span style="font-weight: bold">= </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+                </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span>state_loc_str<span style="font-weight: bold">(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">,</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+                </span>result <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>result<span style="font-weight: bold">:
+                    </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location <span style="font-weight: bold">= </span>loc_proposition_to_tuple<span style="font-weight: bold">(</span><span style="color: red">'{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>query<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"        --&gt; FAILED TO INFER belief location, assuming at initial location (entrance)."
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>initial_location
+        <span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"        Current believed location (inferred): {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making current location queries:" </span>\
+                  <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_loc_query_times<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>infer_and_set_belief_heading<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading <span style="font-weight: bold">= </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span>state_heading_north_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))):
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading <span style="font-weight: bold">= </span>Explorer<span style="font-weight: bold">.</span>heading_str_to_num<span style="font-weight: bold">[</span><span style="color: red">'north'</span><span style="font-weight: bold">]
+        </span><span style="color: blue; font-weight: bold">elif </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span>state_heading_west_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))):
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading <span style="font-weight: bold">= </span>Explorer<span style="font-weight: bold">.</span>heading_str_to_num<span style="font-weight: bold">[</span><span style="color: red">'west'</span><span style="font-weight: bold">]
+        </span><span style="color: blue; font-weight: bold">elif </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span>state_heading_south_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))):
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading <span style="font-weight: bold">= </span>Explorer<span style="font-weight: bold">.</span>heading_str_to_num<span style="font-weight: bold">[</span><span style="color: red">'south'</span><span style="font-weight: bold">]
+        </span><span style="color: blue; font-weight: bold">elif </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span>state_heading_east_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))):
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading <span style="font-weight: bold">= </span>Explorer<span style="font-weight: bold">.</span>heading_str_to_num<span style="font-weight: bold">[</span><span style="color: red">'east'</span><span style="font-weight: bold">]
+
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"        --&gt; FAILED TO INFER belief heading, assuming initial heading."
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>initial_heading
+            
+        <span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"        Current inferred heading: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>heading_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">))
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making belief heading queries:" </span>\
+                  <span style="font-weight: bold">+ </span><span style="color: red">"{0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+            
+
+    </span><span style="color: blue; font-weight: bold">def </span>agent_program<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>percept<span style="font-weight: bold">):
+        </span><span style="color: red">" Implementation of Hybrid-Wumpus-Agent of [Fig. 7.20], p.270 "
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"HWA.agent_program(): at time {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">)
+        
+        </span>percept_sentence <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>make_percept_sentence<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.agent_program(): kb.tell(percept_sentence):"
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>percept_sentence<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>percept_sentence<span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># update the agent's KB based on percepts
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>keep_axioms<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>percept_sentence<span style="font-weight: bold">)
+
+        </span><span style="color: green; font-style: italic"># update belief location and heading based on current KB knowledge state
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.infer_and_set_belief_location()"
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>infer_and_set_belief_location<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.infer_and_set_belief_heading()"
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>infer_and_set_belief_heading<span style="font-weight: bold">()
+		    
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>clauses_before <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.agent_program(): Prepare to add temporal axioms"
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Number of clauses in KB before: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>clauses_before<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>add_temporal_axioms<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+            </span>clauses_after <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Number of clauses in KB after: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>clauses_after<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Total clauses added to KB: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>clauses_after <span style="font-weight: bold">- </span>clauses_before<span style="font-weight: bold">)
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>number_of_clauses_over_epochs<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">))
+
+        </span>safe <span style="font-weight: bold">= </span><span style="color: blue">None
+
+        </span><span style="color: green; font-style: italic"># If Glitter, Grab gold and leave
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>percept_glitter_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">)):
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): Grab gold and leave!"
+            </span>safe <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>find_OK_locations<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan <span style="font-weight: bold">= [</span>action_grab_str<span style="font-weight: bold">(</span><span style="color: blue">None</span><span style="font-weight: bold">)] </span>\
+                        <span style="font-weight: bold">+ </span>plan_route<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">,
+                                     [</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>initial_location<span style="font-weight: bold">], </span>safe<span style="font-weight: bold">) </span>\
+                        <span style="font-weight: bold">+ [</span>action_climb_str<span style="font-weight: bold">(</span><span style="color: blue">None</span><span style="font-weight: bold">)]
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while executing plan_route():" </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+
+        </span><span style="color: green; font-style: italic"># Update safe locations only if we don't have a plan
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): Already have plan" </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" (with {0} actions left),"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan<span style="font-weight: bold">)) </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" continue executing..."
+        </span><span style="color: blue; font-weight: bold">elif </span>safe <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): No current plan, find one..."
+            </span>safe <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>find_OK_locations<span style="font-weight: bold">()
+
+        </span><span style="color: green; font-style: italic"># Visit unvisited safe square
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): Plan to visit safe square..."
+            </span>unvisited <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>update_unvisited_locations<span style="font-weight: bold">() </span><span style="color: green; font-style: italic"># find_unvisited_locations()
+            </span>safe_unvisited <span style="font-weight: bold">= </span>list<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>unvisited<span style="font-weight: bold">).</span>intersection<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>safe<span style="font-weight: bold">)))
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>display_locations_utility<span style="font-weight: bold">(</span>safe_unvisited<span style="font-weight: bold">, </span>prop<span style="font-weight: bold">=</span>state_loc_str<span style="font-weight: bold">,
+                                               </span>title<span style="font-weight: bold">=</span><span style="color: red">"Safe univisited locations:"</span><span style="font-weight: bold">)
+                </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan <span style="font-weight: bold">= </span>plan_route<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">, </span>safe_unvisited<span style="font-weight: bold">, </span>safe<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while executing plan_route():" </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+        </span><span style="color: green; font-style: italic"># Shoot wumpus to try to clear path
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan <span style="color: blue; font-weight: bold">and </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span>state_have_arrow_str<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))):
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): Plan to shoot wumpus..."
+            </span>possible_wumpus <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>find_possible_wumpus_locations<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan <span style="font-weight: bold">= </span>plan_shot<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">, </span>possible_wumpus<span style="font-weight: bold">, </span>safe<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while executing plan_shot():" </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+        </span><span style="color: green; font-style: italic"># No safe choice, take risk with an unknown square
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): No safe choice, take risk..."
+            </span>not_unsafe <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>find_not_unsafe_locations<span style="font-weight: bold">()
+
+            </span><span style="color: green; font-style: italic"># print "univisited: ", unvisited
+            
+            </span>not_unsafe_unvisited <span style="font-weight: bold">= </span>list<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>unvisited<span style="font-weight: bold">).</span>intersection<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>not_unsafe<span style="font-weight: bold">)))
+
+            </span><span style="color: green; font-style: italic"># print "not_unsafe_unvisited", not_unsafe_unvisited
+            # print "safe", safe
+
+            </span>safe_and_not_unsafe_unvisited <span style="font-weight: bold">= </span>list<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>safe<span style="font-weight: bold">).</span>union<span style="font-weight: bold">(</span>set<span style="font-weight: bold">(</span>not_unsafe_unvisited<span style="font-weight: bold">)))
+
+            </span><span style="color: green; font-style: italic"># print "safe_and_not_unsafe_unvisited", safe_and_not_unsafe_unvisited
+            
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan <span style="font-weight: bold">= </span>plan_route<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">, </span>not_unsafe_unvisited<span style="font-weight: bold">,
+                                   </span>safe_and_not_unsafe_unvisited<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while executing plan_route():" </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+        </span><span style="color: green; font-style: italic"># No choices left, leave!
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): No choices left, leave!..."
+                </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan <span style="font-weight: bold">= </span>plan_route<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_location<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>belief_heading<span style="font-weight: bold">,
+                                   </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>initial_location<span style="font-weight: bold">, </span>safe<span style="font-weight: bold">) </span>\
+                        <span style="font-weight: bold">+ [</span>action_climb_str<span style="font-weight: bold">(</span><span style="color: blue">None</span><span style="font-weight: bold">)]
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while executing plan_route():" </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): Plan:\n    {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan<span style="font-weight: bold">)
+
+        </span>action <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>plan<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">(</span><span style="color: red">0</span><span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># take next action in plan
+
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   HWA.agent_program(): Action: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>action<span style="font-weight: bold">)
+
+        </span><span style="color: green; font-style: italic"># update KB with selected action
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>add_time_stamp<span style="font-weight: bold">(</span>action<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>keep_axioms<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>axioms<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>add_time_stamp<span style="font-weight: bold">(</span>action<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+        
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>time <span style="font-weight: bold">+= </span><span style="color: red">1 </span><span style="color: green; font-style: italic"># advance the agent's time
+        </span><span style="color: blue; font-weight: bold">return </span>action
+
+
+    </pre>
+    </body>
+    </html>
+    

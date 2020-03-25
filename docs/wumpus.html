@@ -1,0 +1,695 @@
+<html>
+    <head>
+    <title>wumpus.py</title>
+    </head>
+    <body>
+    <h3>wumpus.py (<a href="../wumpus.py">original</a>)</h3>
+    <hr>
+    <pre>
+<span style="color: green; font-style: italic"># wumpus.py
+# ---------
+# Licensing Information:
+# Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+# You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+# The Hunt The Wumpus AI project was developed at University of Arizona
+# by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+# This project extends the python code provided by Peter Norvig as part of
+# the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+# see http://aima.cs.berkeley.edu/code.html
+# In particular, the following files come directly from the AIMA python
+# code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+# ('logic.py' has been modified by Clay Morrison in locations with the
+# comment 'CTM')
+# The file ['minisat.py'] implements a slim system call wrapper to the minisat
+# (see http://minisat.se) SAT solver, and is directly based on the satispy
+# python project, see https://github.com/netom/satispy .
+
+</span><span style="color: blue; font-weight: bold">from </span>wumpus_agent <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">from </span>time <span style="color: blue; font-weight: bold">import </span>clock
+<span style="color: blue; font-weight: bold">import </span>wumpus_environment
+
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Wumpus World Scenarios
+#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">class </span>WumpusWorldScenario<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Construct a Wumpus World Scenario
+    Objects that can be added to the environment:
+        Wumpus()
+        Pit()
+        Gold()
+        Wall()
+        HybridWumpusAgent(heading)  # A propositional logic Wumpus World agent
+        Explorer(program, heading)  # A non-logical Wumpus World agent (mostly for debugging)
+    Provides methods to load layout from file
+    Provides step and run methods to run the scenario
+        with the provided agent's agent_program
+    """
+    
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>layout_file<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>objects<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">,
+                 </span>width<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>height<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>entrance<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""
+        layout_file := (&lt;string: layout_file_name&gt;, &lt;agent&gt;)
+        """
+        </span><span style="color: blue; font-weight: bold">if </span>agent <span style="font-weight: bold">!= </span><span style="color: blue">None </span><span style="color: blue; font-weight: bold">and not </span>isinstance<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span>Explorer<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">raise </span>Exception<span style="font-weight: bold">(</span><span style="color: red">"agent must be type Explorer, got instance of class\n" </span>\
+                            <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>__class__<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span>layout_file<span style="font-weight: bold">:
+            </span>objects<span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">, </span>entrance <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>load_layout<span style="font-weight: bold">(</span>layout_file<span style="font-weight: bold">)
+            
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height <span style="font-weight: bold">= </span>width<span style="font-weight: bold">, </span>height
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>entrance <span style="font-weight: bold">= </span>entrance
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>agent <span style="font-weight: bold">= </span>agent
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>objects <span style="font-weight: bold">= </span>objects
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>trace <span style="font-weight: bold">= </span>trace
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>env <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>build_world<span style="font-weight: bold">(</span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">, </span>entrance<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">, </span>objects<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>build_world<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">, </span>entrance<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">, </span>objects<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""
+        Create a WumpusEnvironment with dimensions width,height
+        Set the environment entrance
+        objects := [(&lt;wumpus_environment_object&gt;, &lt;location: (&lt;x&gt;,&lt;y&gt;) &gt;, ...]
+        """
+        </span>env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">, </span>entrance<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>trace<span style="font-weight: bold">:
+            </span>agent <span style="font-weight: bold">= </span>wumpus_environment<span style="font-weight: bold">.</span>TraceAgent<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">)
+        </span>agent<span style="font-weight: bold">.</span>register_environment<span style="font-weight: bold">(</span>env<span style="font-weight: bold">)
+        </span>env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span>env<span style="font-weight: bold">.</span>entrance<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span><span style="font-weight: bold">(</span>obj<span style="font-weight: bold">, </span>loc<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">in </span>objects<span style="font-weight: bold">:
+            </span>env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>obj<span style="font-weight: bold">, </span>loc<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>env
+
+    <span style="color: blue; font-weight: bold">def </span>load_layout<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>layout_file<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""
+        Load text file specifying Wumpus Environment initial configuration
+        Text file is N (rows) by M (columns) grid where each cell in a row
+        consists of M comma-separated cells specs, where each cell contains
+        either:
+           '.' : space (really just a placeholder)
+        or a one or more of (although typically just have one per cell):
+           'W' : wumpus
+           'P' : pit
+           'G' : gold
+           'A' : wumpus hunter agent (heading specified in agent object)
+        """
+        
+        </span><span style="color: blue; font-weight: bold">if </span>layout_file<span style="font-weight: bold">.</span>endswith<span style="font-weight: bold">(</span><span style="color: red">'.lay'</span><span style="font-weight: bold">):
+            </span>layout <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>tryToLoad<span style="font-weight: bold">(</span><span style="color: red">'layouts/' </span><span style="font-weight: bold">+ </span>layout_file<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if not </span>layout<span style="font-weight: bold">: </span>layout <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>tryToLoad<span style="font-weight: bold">(</span>layout_file<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>layout <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>tryToLoad<span style="font-weight: bold">(</span><span style="color: red">'layouts/' </span><span style="font-weight: bold">+ </span>layout_file <span style="font-weight: bold">+ </span><span style="color: red">'.lay'</span><span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if not </span>layout<span style="font-weight: bold">: </span>layout <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>tryToLoad<span style="font-weight: bold">(</span>layout_file <span style="font-weight: bold">+ </span><span style="color: red">'.lay'</span><span style="font-weight: bold">)
+
+        </span><span style="color: blue; font-weight: bold">if not </span>layout<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">raise </span>Exception<span style="font-weight: bold">(</span><span style="color: red">"Could not find layout file: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>layout_file<span style="font-weight: bold">))
+
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Loaded layout '{0}'"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>layout_file<span style="font-weight: bold">)
+
+        </span>objects <span style="font-weight: bold">= []
+        </span>entrance <span style="font-weight: bold">= (</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># default entrance location
+        
+        </span>ri <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>layout<span style="font-weight: bold">)
+        </span>largest_ci <span style="font-weight: bold">= </span><span style="color: red">0
+        </span><span style="color: blue; font-weight: bold">for </span>row <span style="color: blue; font-weight: bold">in </span>layout<span style="font-weight: bold">:
+            </span>ci <span style="font-weight: bold">= </span><span style="color: red">0
+            </span><span style="color: blue; font-weight: bold">if </span>row<span style="font-weight: bold">:
+                </span>ri <span style="font-weight: bold">-= </span><span style="color: red">1
+                </span>row <span style="font-weight: bold">= </span>row<span style="font-weight: bold">.</span>split<span style="font-weight: bold">(</span><span style="color: red">','</span><span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">for </span>cell <span style="color: blue; font-weight: bold">in </span>row<span style="font-weight: bold">:
+                    </span>ci <span style="font-weight: bold">+= </span><span style="color: red">1
+                    </span><span style="color: blue; font-weight: bold">if </span>ci <span style="font-weight: bold">&gt; </span>largest_ci<span style="font-weight: bold">: </span>largest_ci <span style="font-weight: bold">= </span>ci
+                    <span style="color: blue; font-weight: bold">for </span>char <span style="color: blue; font-weight: bold">in </span>cell<span style="font-weight: bold">:
+                        </span><span style="color: blue; font-weight: bold">if </span>char <span style="font-weight: bold">== </span><span style="color: red">'W'</span><span style="font-weight: bold">:
+                            </span>objects<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span>Wumpus<span style="font-weight: bold">(),(</span>ci<span style="font-weight: bold">,</span>ri<span style="font-weight: bold">)))
+                        </span><span style="color: blue; font-weight: bold">elif </span>char <span style="font-weight: bold">== </span><span style="color: red">'P'</span><span style="font-weight: bold">:
+                            </span>objects<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span>Pit<span style="font-weight: bold">(),(</span>ci<span style="font-weight: bold">,</span>ri<span style="font-weight: bold">)))
+                        </span><span style="color: blue; font-weight: bold">elif </span>char <span style="font-weight: bold">== </span><span style="color: red">'G'</span><span style="font-weight: bold">:
+                            </span>objects<span style="font-weight: bold">.</span>append<span style="font-weight: bold">((</span>Gold<span style="font-weight: bold">(),(</span>ci<span style="font-weight: bold">,</span>ri<span style="font-weight: bold">)))
+                        </span><span style="color: blue; font-weight: bold">elif </span>char <span style="font-weight: bold">== </span><span style="color: red">'A'</span><span style="font-weight: bold">:
+                            </span>entrance <span style="font-weight: bold">= (</span>ci<span style="font-weight: bold">,</span>ri<span style="font-weight: bold">)
+
+        </span><span style="color: blue; font-weight: bold">return </span>objects<span style="font-weight: bold">, </span>largest_ci<span style="font-weight: bold">, </span>len<span style="font-weight: bold">(</span>layout<span style="font-weight: bold">)-</span>ri<span style="font-weight: bold">, </span>entrance
+
+    <span style="color: blue; font-weight: bold">def </span>tryToLoad<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>fullname<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">not </span>os<span style="font-weight: bold">.</span>path<span style="font-weight: bold">.</span>exists<span style="font-weight: bold">(</span>fullname<span style="font-weight: bold">)): </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+        </span>f <span style="font-weight: bold">= </span>open<span style="font-weight: bold">(</span>fullname<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">try</span><span style="font-weight: bold">: </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>line<span style="font-weight: bold">.</span>strip<span style="font-weight: bold">() </span><span style="color: blue; font-weight: bold">for </span>line <span style="color: blue; font-weight: bold">in </span>f<span style="font-weight: bold">]
+        </span><span style="color: blue; font-weight: bold">finally</span><span style="font-weight: bold">: </span>f<span style="font-weight: bold">.</span>close<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>step<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>step<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">print
+        print </span><span style="color: red">"Current Wumpus Environment:"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>run<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>steps <span style="font-weight: bold">= </span><span style="color: red">1000</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">for </span>step <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>steps<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>is_done<span style="font-weight: bold">():
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"DONE."
+                </span>slist <span style="font-weight: bold">= []
+                </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>agents<span style="font-weight: bold">) &gt; </span><span style="color: red">0</span><span style="font-weight: bold">:
+                    </span>slist <span style="font-weight: bold">+= [</span><span style="color: red">'Final Scores:'</span><span style="font-weight: bold">]
+                </span><span style="color: blue; font-weight: bold">for </span>agent <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>agents<span style="font-weight: bold">:
+                    </span>slist<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span><span style="color: red">' {0}={1}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">.</span>performance_measure<span style="font-weight: bold">))
+                    </span><span style="color: blue; font-weight: bold">if </span>agent<span style="font-weight: bold">.</span>verbose<span style="font-weight: bold">:
+                        </span><span style="color: blue; font-weight: bold">if </span>hasattr<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span><span style="color: red">'number_of_clauses_over_epochs'</span><span style="font-weight: bold">):
+                            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"number_of_clauses_over_epochs:" </span>\
+                                  <span style="font-weight: bold">+</span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>number_of_clauses_over_epochs<span style="font-weight: bold">)
+                        </span><span style="color: blue; font-weight: bold">if </span>hasattr<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span><span style="color: red">'belief_loc_query_times'</span><span style="font-weight: bold">):
+                            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"belief_loc_query_times:" </span>\
+                                  <span style="font-weight: bold">+</span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>belief_loc_query_times<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">''</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>slist<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">return
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>step<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>to_string<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span>s <span style="font-weight: bold">= </span><span style="color: red">"Environment width={0}, height={1}\n"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+        </span>s <span style="font-weight: bold">+= </span><span style="color: red">"Initial Position: {0}\n"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>entrance<span style="font-weight: bold">)
+        </span>s <span style="font-weight: bold">+= </span><span style="color: red">"Actions: {0}\n"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>actions<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>s
+
+    <span style="color: blue; font-weight: bold">def </span>pprint<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">()
+
+
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>world_scenario_hybrid_wumpus_agent_from_layout<span style="font-weight: bold">(</span>layout_filename<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Create WumpusWorldScenario with an automated agent_program that will
+        try to solve the Hunt The Wumpus game on its own.
+    layout_filename := name of layout file to load
+    """
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>layout_file <span style="font-weight: bold">= </span>layout_filename<span style="font-weight: bold">,
+                               </span>agent <span style="font-weight: bold">= </span>HybridWumpusAgent<span style="font-weight: bold">(</span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#------------------------------------
+# examples of constructing HybridWumpusAgent scenario
+# specifying objects as list
+
+</span><span style="color: blue; font-weight: bold">def </span>wscenario_4x4_HybridWumpusAgent<span style="font-weight: bold">():
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>agent <span style="font-weight: bold">= </span>HybridWumpusAgent<span style="font-weight: bold">(</span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">),
+                               </span>objects <span style="font-weight: bold">= [(</span>Wumpus<span style="font-weight: bold">(),(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">)),
+                                          (</span>Pit<span style="font-weight: bold">(),(</span><span style="color: red">3</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">)),
+                                          (</span>Pit<span style="font-weight: bold">(),(</span><span style="color: red">3</span><span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">)),
+                                          (</span>Gold<span style="font-weight: bold">(),(</span><span style="color: red">2</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">))],
+                               </span>width <span style="font-weight: bold">= </span><span style="color: red">4</span><span style="font-weight: bold">, </span>height <span style="font-weight: bold">= </span><span style="color: red">4</span><span style="font-weight: bold">, </span>entrance <span style="font-weight: bold">= (</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>world_scenario_manual_with_kb_from_layout<span style="font-weight: bold">(</span>layout_filename<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Create WumpusWorldScenario with a manual agent_program and Knowledge Base
+        (see with_manual_kb_program)
+    layout_filename := name of layout file to load
+    """
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>layout_file <span style="font-weight: bold">= </span>layout_filename<span style="font-weight: bold">,
+                               </span>agent <span style="font-weight: bold">= </span>with_manual_kb_program<span style="font-weight: bold">(</span>HybridWumpusAgent<span style="font-weight: bold">(</span><span style="color: red">'north'</span><span style="font-weight: bold">,
+                                                                                </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#------------------------------------
+# examples of constructing manual wumpus agent with KB scenario
+# specifying objects as list
+
+</span><span style="color: blue; font-weight: bold">def </span>wscenario_4x4_manual_HybridWumpusAgent<span style="font-weight: bold">():
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>agent <span style="font-weight: bold">= </span>with_manual_kb_program<span style="font-weight: bold">(</span>HybridWumpusAgent<span style="font-weight: bold">(</span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)),
+                               </span>objects <span style="font-weight: bold">= [(</span>Wumpus<span style="font-weight: bold">(),(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">)),
+                                          (</span>Pit<span style="font-weight: bold">(),(</span><span style="color: red">3</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">)),
+                                          (</span>Pit<span style="font-weight: bold">(),(</span><span style="color: red">3</span><span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">)),
+                                          (</span>Gold<span style="font-weight: bold">(),(</span><span style="color: red">2</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">))],
+                               </span>width <span style="font-weight: bold">= </span><span style="color: red">4</span><span style="font-weight: bold">, </span>height <span style="font-weight: bold">= </span><span style="color: red">4</span><span style="font-weight: bold">, </span>entrance <span style="font-weight: bold">= (</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>world_scenario_manual_from_layout<span style="font-weight: bold">(</span>layout_filename<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Create WumpusWorldScenario with a manual agent_program (see with_manual_program)
+    layout_filename := name of layout file to load
+    """
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>layout_file <span style="font-weight: bold">= </span>layout_filename<span style="font-weight: bold">,
+                               </span>agent <span style="font-weight: bold">= </span>with_manual_program<span style="font-weight: bold">(</span>Explorer<span style="font-weight: bold">(</span>heading<span style="font-weight: bold">=</span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#------------------------------------
+# examples of constructing manually-playable scenarios
+# specifying objects as list or from layout file
+
+</span><span style="color: blue; font-weight: bold">def </span>wscenario_4x4_manual<span style="font-weight: bold">():
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>agent <span style="font-weight: bold">= </span>with_manual_program<span style="font-weight: bold">(</span>Explorer<span style="font-weight: bold">(</span>heading<span style="font-weight: bold">=</span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)),
+                               </span>objects <span style="font-weight: bold">= [(</span>Wumpus<span style="font-weight: bold">(),(</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">)),
+                                          (</span>Pit<span style="font-weight: bold">(),(</span><span style="color: red">3</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">)),
+                                          (</span>Pit<span style="font-weight: bold">(),(</span><span style="color: red">3</span><span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">)),
+                                          (</span>Gold<span style="font-weight: bold">(),(</span><span style="color: red">2</span><span style="font-weight: bold">,</span><span style="color: red">3</span><span style="font-weight: bold">))],
+                               </span>width <span style="font-weight: bold">= </span><span style="color: red">4</span><span style="font-weight: bold">, </span>height <span style="font-weight: bold">= </span><span style="color: red">4</span><span style="font-weight: bold">, </span>entrance <span style="font-weight: bold">= (</span><span style="color: red">1</span><span style="font-weight: bold">,</span><span style="color: red">1</span><span style="font-weight: bold">),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>wscenario_4x4_manual_book_from_layout<span style="font-weight: bold">():
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>layout_file <span style="font-weight: bold">= </span><span style="color: red">"wumpus_4x4_book"</span><span style="font-weight: bold">,
+                               </span>agent <span style="font-weight: bold">= </span>with_manual_program<span style="font-weight: bold">(</span>Explorer<span style="font-weight: bold">(</span>heading<span style="font-weight: bold">=</span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>wscenario_4x4_manual_layout2_from_layout<span style="font-weight: bold">():
+    </span><span style="color: blue; font-weight: bold">return </span>WumpusWorldScenario<span style="font-weight: bold">(</span>layout_file <span style="font-weight: bold">= </span><span style="color: red">"wumpus_4x4_2"</span><span style="font-weight: bold">,
+                               </span>agent <span style="font-weight: bold">= </span>with_manual_program<span style="font-weight: bold">(</span>Explorer<span style="font-weight: bold">(</span>heading<span style="font-weight: bold">=</span><span style="color: red">'north'</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">)),
+                               </span>trace<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Manual agent program
+#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>with_manual_program<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Take &lt;agent&gt; and replaces its agent_program with manual_program.
+    manual_program waits for keyboard input and executes command.
+    This uses a closure.  Three cheers for closures !!!
+    (if you don't know what a closure is, read this:
+       http://en.wikipedia.org/wiki/Closure_(computer_science) )
+    """
+
+    </span>helping  <span style="font-weight: bold">= [</span><span style="color: red">'?'</span><span style="font-weight: bold">, </span><span style="color: red">'help'</span><span style="font-weight: bold">]
+    </span>stopping <span style="font-weight: bold">= [</span><span style="color: red">'quit'</span><span style="font-weight: bold">, </span><span style="color: red">'stop'</span><span style="font-weight: bold">, </span><span style="color: red">'exit'</span><span style="font-weight: bold">]
+    </span>actions  <span style="font-weight: bold">= [</span><span style="color: red">'TurnRight'</span><span style="font-weight: bold">, </span><span style="color: red">'TurnLeft'</span><span style="font-weight: bold">, </span><span style="color: red">'Forward'</span><span style="font-weight: bold">, </span><span style="color: red">'Grab'</span><span style="font-weight: bold">, </span><span style="color: red">'Climb'</span><span style="font-weight: bold">, </span><span style="color: red">'Shoot'</span><span style="font-weight: bold">, </span><span style="color: red">'Wait'</span><span style="font-weight: bold">]
+
+    </span><span style="color: blue; font-weight: bold">def </span>show_commands<span style="font-weight: bold">():
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   The following are valid Hunt The Wumpus action:"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: red">', '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>a<span style="font-weight: bold">: </span><span style="color: red">'\'{0}\''</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>a<span style="font-weight: bold">), </span>actions<span style="font-weight: bold">)))
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter {0} to get this command info" </span>\
+              <span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: red">' or '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>a<span style="font-weight: bold">: </span><span style="color: red">'\'{0}\''</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>a<span style="font-weight: bold">), </span>helping<span style="font-weight: bold">)))
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter {0} to stop playing" </span>\
+              <span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: red">' or '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>a<span style="font-weight: bold">: </span><span style="color: red">'\'{0}\''</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>a<span style="font-weight: bold">), </span>stopping<span style="font-weight: bold">)))
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter 'env' to display current wumpus environment"
+
+    </span><span style="color: blue; font-weight: bold">def </span>manual_program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"[{0}] You perceive: {1}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>time<span style="font-weight: bold">,</span>agent<span style="font-weight: bold">.</span>pretty_percept_vector<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">))
+        </span>action <span style="font-weight: bold">= </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">while not </span>action<span style="font-weight: bold">:
+            </span>val <span style="font-weight: bold">= </span>raw_input<span style="font-weight: bold">(</span><span style="color: red">"Enter Action ('?' for list of commands): "</span><span style="font-weight: bold">)
+            </span>val <span style="font-weight: bold">= </span>val<span style="font-weight: bold">.</span>strip<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">if </span>val <span style="color: blue; font-weight: bold">in </span>helping<span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print
+                </span>show_commands<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print
+            elif </span>val <span style="color: blue; font-weight: bold">in </span>stopping<span style="font-weight: bold">:
+                </span>action <span style="font-weight: bold">= </span><span style="color: red">'Stop'
+            </span><span style="color: blue; font-weight: bold">elif </span>val <span style="font-weight: bold">== </span><span style="color: red">'env'</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print
+                print </span><span style="color: red">"Current wumpus environment:"
+                </span><span style="color: blue; font-weight: bold">print </span>agent<span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">elif </span>val <span style="color: blue; font-weight: bold">in </span>actions<span style="font-weight: bold">:
+                </span>action <span style="font-weight: bold">= </span>val
+            <span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"'{0}' is an invalid command;"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>val<span style="font-weight: bold">) </span>\
+                      <span style="font-weight: bold">+ </span><span style="color: red">" try again (enter '?' for list of commands)"
+        </span>agent<span style="font-weight: bold">.</span>time <span style="font-weight: bold">+= </span><span style="color: red">1
+        </span><span style="color: blue; font-weight: bold">return </span>action
+
+    agent<span style="font-weight: bold">.</span>program <span style="font-weight: bold">= </span>manual_program
+    <span style="color: blue; font-weight: bold">return </span>agent
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Manual agent program with Knowledge Base
+#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>with_manual_kb_program<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Take &lt;agent&gt; and replaces its agent_program with manual_kb_program.
+    Assumes the &lt;agent&gt; is a HybridWumpusAgent.
+    (TODO: separate out logical agent from HybridWumpusAgent)
+    Agent program that waits for keyboard input and executes command.
+    Also provides interface for doing KB queries.
+    Closures rock!
+    """
+
+    </span>helping <span style="font-weight: bold">= [</span><span style="color: red">'?'</span><span style="font-weight: bold">, </span><span style="color: red">'help'</span><span style="font-weight: bold">]
+    </span>stopping <span style="font-weight: bold">= [</span><span style="color: red">'quit'</span><span style="font-weight: bold">, </span><span style="color: red">'stop'</span><span style="font-weight: bold">, </span><span style="color: red">'exit'</span><span style="font-weight: bold">]
+    </span>actions <span style="font-weight: bold">= [</span><span style="color: red">'TurnRight'</span><span style="font-weight: bold">, </span><span style="color: red">'TurnLeft'</span><span style="font-weight: bold">, </span><span style="color: red">'Forward'</span><span style="font-weight: bold">, </span><span style="color: red">'Grab'</span><span style="font-weight: bold">, </span><span style="color: red">'Climb'</span><span style="font-weight: bold">, </span><span style="color: red">'Shoot'</span><span style="font-weight: bold">, </span><span style="color: red">'Wait'</span><span style="font-weight: bold">]
+    </span>queries <span style="font-weight: bold">= [(</span><span style="color: red">'qp'</span><span style="font-weight: bold">,</span><span style="color: red">'Query a single proposition;\n' </span>\
+                <span style="font-weight: bold">+ </span><span style="color: red">'           E.g. \'qp B1_1\' or \'qp OK1_1_3\', \'qp HeadingWest4\''</span><span style="font-weight: bold">),
+               (</span><span style="color: red">'qpl'</span><span style="font-weight: bold">,</span><span style="color: red">'Query a-temporal location-based proposition at all x,y locations;\n' </span>\
+                <span style="font-weight: bold">+ </span><span style="color: red">'           E.g., \'qpl P\' runs all queries of P&lt;x&gt;_&lt;y&gt;'</span><span style="font-weight: bold">),
+               (</span><span style="color: red">'qplt'</span><span style="font-weight: bold">,</span><span style="color: red">'Query temporal and location-based propositions at all x,y locations;\n' </span>\
+                <span style="font-weight: bold">+ </span><span style="color: red">'           E.g., \'qplt OK 4\' runs all queries of the OK&lt;x&gt;_&lt;y&gt;_4'</span><span style="font-weight: bold">),
+               (</span><span style="color: red">'q!'</span><span style="font-weight: bold">,</span><span style="color: red">'Run ALL queries for optionally specified time (default is current time);\n'</span>\
+                <span style="font-weight: bold">+ </span><span style="color: red">'           (can be time consuming!)'</span><span style="font-weight: bold">)]
+
+    </span><span style="color: blue; font-weight: bold">def </span>show_commands<span style="font-weight: bold">():
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Available Commands:"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   The following are valid Hunt The Wumpus actions:"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: red">', '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>a<span style="font-weight: bold">: </span><span style="color: red">'\'{0}\''</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>a<span style="font-weight: bold">), </span>actions<span style="font-weight: bold">)))
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter {0} to get this command info" </span>\
+              <span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: red">' or '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>a<span style="font-weight: bold">: </span><span style="color: red">'\'{0}\''</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>a<span style="font-weight: bold">), </span>helping<span style="font-weight: bold">)))
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter {0} to stop playing" </span>\
+              <span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span><span style="color: red">' or '</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span><span style="color: blue; font-weight: bold">lambda </span>a<span style="font-weight: bold">: </span><span style="color: red">'\'{0}\''</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>a<span style="font-weight: bold">), </span>stopping<span style="font-weight: bold">)))
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter 'env' to display current wumpus environment"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter 'kbsat' to check if the agent's KB is satisfiable"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"      If the KB is NOT satisfiable, then there's a contradiction that needs fixing."
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"      NOTE: A satisfiable KB does not mean there aren't other problems."
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter 'save-axioms' to save all of the KB axioms to 'kb-axioms.txt'"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"      This will overwrite any existing 'kb-axioms.txt'"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter 'save-clauses' to save all of the KB clauses to text file 'kb-clauses.txt'"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"      This will overwrite any existing 'kb-clauses.txt'"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Enter 'props' to list all of the proposition bases"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Queries:"
+        </span><span style="color: blue; font-weight: bold">for </span>query<span style="font-weight: bold">,</span>desc <span style="color: blue; font-weight: bold">in </span>queries<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"      {0} : {1}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span>desc<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>show_propositions<span style="font-weight: bold">():
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Proposition Bases:"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Atemporal location-based propositions (include x,y index: P&lt;x&gt;_&lt;y&gt;)"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     '" </span><span style="font-weight: bold">+ </span><span style="color: red">'\', \''</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>proposition_bases_atemporal_location<span style="font-weight: bold">) + </span><span style="color: red">'\''
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Perceptual propositions (include time index: P&lt;t&gt;)"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     '" </span><span style="font-weight: bold">+ </span><span style="color: red">'\', \''</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>proposition_bases_perceptual_fluents<span style="font-weight: bold">) + </span><span style="color: red">'\''
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Location fluent propositions (include x,y and time index: P&lt;x&gt;_&lt;y&gt;_&lt;t&gt;)"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     '" </span><span style="font-weight: bold">+ </span><span style="color: red">'\', \''</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>proposition_bases_location_fluents<span style="font-weight: bold">) + </span><span style="color: red">'\''
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   State fluent propositions (include time index: P&lt;t&gt;)"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     '" </span><span style="font-weight: bold">+ </span><span style="color: red">'\', \''</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>proposition_bases_state_fluents<span style="font-weight: bold">[:</span><span style="color: red">4</span><span style="font-weight: bold">]) + </span><span style="color: red">'\','
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     '" </span><span style="font-weight: bold">+ </span><span style="color: red">'\', \''</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>proposition_bases_state_fluents<span style="font-weight: bold">[</span><span style="color: red">4</span><span style="font-weight: bold">:]) + </span><span style="color: red">'\''
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Action propositions (include time index: P&lt;t&gt;)"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     '" </span><span style="font-weight: bold">+ </span><span style="color: red">'\', \''</span><span style="font-weight: bold">.</span>join<span style="font-weight: bold">(</span>proposition_bases_actions<span style="font-weight: bold">) + </span><span style="color: red">'\''
+
+    </span><span style="color: blue; font-weight: bold">def </span>write_list_to_text_file<span style="font-weight: bold">(</span>filename<span style="font-weight: bold">,</span>list<span style="font-weight: bold">):
+        </span>outfile <span style="font-weight: bold">= </span>file<span style="font-weight: bold">(</span>filename<span style="font-weight: bold">, </span><span style="color: red">'w'</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>item <span style="color: blue; font-weight: bold">in </span>list<span style="font-weight: bold">:
+            </span>outfile<span style="font-weight: bold">.</span>write<span style="font-weight: bold">(</span><span style="color: red">'{0}\n'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>item<span style="font-weight: bold">))
+        </span>outfile<span style="font-weight: bold">.</span>close<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>check_kb_status<span style="font-weight: bold">():
+        </span><span style="color: darkred">"""
+        Tests whether the agent KB is satisfiable.
+        If not, that means the KB contains a contradiction that needs fixing.
+        However, being satisfiable does not mean the KB is correct.
+        """
+        </span>result <span style="font-weight: bold">= </span>minisat<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>result<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Agent KB is satisfiable"
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Agent KB is NOT satisfiable!!  There is contradiction that needs fixing!"
+
+    </span><span style="color: blue; font-weight: bold">def </span>simple_query<span style="font-weight: bold">(</span>proposition<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""
+        Executes a simple query to the agent KB for specified proposition.
+        """
+        </span>result <span style="font-weight: bold">= </span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>expr<span style="font-weight: bold">(</span>proposition<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"{0}: Unknown!"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"{0}: {1}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition<span style="font-weight: bold">,</span>result<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>location_based_query<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""
+        Executes queries for the specified type of proposition, for
+        each x,y location.
+        proposition_base := as all of the propositions include in their
+        name 1 or more indexes (for time and/or x,y location), the
+        proposition_base is the simple string representing the base
+        of the proposition witout the indexes, which are added in
+        code, below.
+        time := the time index of the propositions being queried
+        """
+        </span>display_env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+        </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Running queries for: {0}&lt;x&gt;_&lt;y&gt;"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span>agent<span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span>agent<span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+                </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span><span style="color: red">'{0}{1}_{2}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">,</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                </span>result <span style="font-weight: bold">= </span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                    </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span><span style="color: red">'?'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                    </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span>result<span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making queries:" </span>\
+              <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span>display_env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>time<span style="font-weight: bold">,
+                                    </span>title<span style="font-weight: bold">=</span><span style="color: red">"All {0}&lt;x&gt;_&lt;y&gt; queries"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>location_time_based_query<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">, </span>time<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""
+        Executes queries for the specified type of proposition, for
+        each x,y location, at the specified time.
+        proposition_base := as all of the propositions include in their
+        name 1 or more indexes (for time and/or x,y location), the
+        proposition_base is the simple string representing the base
+        of the proposition witout the indexes, which are added in
+        code, below.
+        time := the time index of the propositions being queried
+        """
+        </span>display_env <span style="font-weight: bold">= </span>WumpusEnvironment<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>width<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">.</span>height<span style="font-weight: bold">)
+        </span>start_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Running queries for: {0}&lt;x&gt;_&lt;y&gt;_{1}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">,</span>time<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span>agent<span style="font-weight: bold">.</span>width<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: red">1</span><span style="font-weight: bold">,</span>agent<span style="font-weight: bold">.</span>height<span style="font-weight: bold">+</span><span style="color: red">1</span><span style="font-weight: bold">):
+                </span>query <span style="font-weight: bold">= </span>expr<span style="font-weight: bold">(</span><span style="color: red">'{0}{1}_{2}_{3}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">,</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">,</span>time<span style="font-weight: bold">))
+                </span>result <span style="font-weight: bold">= </span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>ask<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>result <span style="font-weight: bold">== </span><span style="color: blue">None</span><span style="font-weight: bold">:
+                    </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span><span style="color: red">'?'</span><span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+                </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                    </span>display_env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Proposition<span style="font-weight: bold">(</span>query<span style="font-weight: bold">,</span>result<span style="font-weight: bold">),(</span>x<span style="font-weight: bold">,</span>y<span style="font-weight: bold">))
+        </span>end_time <span style="font-weight: bold">= </span>clock<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"          &gt;&gt;&gt; time elapsed while making queries:" </span>\
+              <span style="font-weight: bold">+ </span><span style="color: red">" {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>end_time<span style="font-weight: bold">-</span>start_time<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span>display_env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>time<span style="font-weight: bold">,
+                                    </span>title<span style="font-weight: bold">=</span><span style="color: red">"All {0}&lt;x&gt;_&lt;y&gt;_{1} queries"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>proposition_base<span style="font-weight: bold">,
+                                                                              </span>time<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>run_all_queries<span style="font-weight: bold">(</span>time<span style="font-weight: bold">):
+        </span>check_kb_status<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">for </span>p <span style="color: blue; font-weight: bold">in </span>proposition_bases_perceptual_fluents<span style="font-weight: bold">:
+            </span>simple_query<span style="font-weight: bold">(</span>p <span style="font-weight: bold">+ </span><span style="color: red">'{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>time<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">for </span>p <span style="color: blue; font-weight: bold">in </span>proposition_bases_atemporal_location<span style="font-weight: bold">:
+            </span>location_based_query<span style="font-weight: bold">(</span>p<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>p <span style="color: blue; font-weight: bold">in </span>proposition_bases_location_fluents<span style="font-weight: bold">:
+            </span>location_time_based_query<span style="font-weight: bold">(</span>p<span style="font-weight: bold">,</span>time<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>p <span style="color: blue; font-weight: bold">in </span>proposition_bases_state_fluents<span style="font-weight: bold">:
+            </span>simple_query<span style="font-weight: bold">(</span>p <span style="font-weight: bold">+ </span><span style="color: red">'{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>time<span style="font-weight: bold">))
+        </span><span style="color: green; font-style: italic"># remove the quotes below and add quotes to the following if-statement
+        # in order to query all actions from time 0 to now
+        </span><span style="color: darkred">'''
+        print "Querying actions from time 0 to {0}".format(time)
+        for p in propositions_actions:
+            for t in range(time+1):
+                simple_query(p + '{0}'.format(t))
+        '''
+        </span><span style="color: blue; font-weight: bold">if </span>time<span style="font-weight: bold">-</span><span style="color: red">1 </span><span style="font-weight: bold">&gt; </span><span style="color: red">0</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Actions from previous time: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>time<span style="font-weight: bold">-</span><span style="color: red">1</span><span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">for </span>p <span style="color: blue; font-weight: bold">in </span>proposition_bases_actions<span style="font-weight: bold">:
+                </span>simple_query<span style="font-weight: bold">(</span>p <span style="font-weight: bold">+ </span><span style="color: red">'{0}'</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>time<span style="font-weight: bold">-</span><span style="color: red">1</span><span style="font-weight: bold">))
+            
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"FINISHED running all queries for time {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>time<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>manual_kb_program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"------------------------------------------------------------------"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"At time {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>time<span style="font-weight: bold">)
+        
+        </span>percept_sentence <span style="font-weight: bold">= </span>agent<span style="font-weight: bold">.</span>make_percept_sentence<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.agent_program(): kb.tell(percept_sentence):"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>percept_sentence<span style="font-weight: bold">)
+        </span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>percept_sentence<span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># update the agent's KB based on percepts
+
+        </span><span style="color: green; font-style: italic"># update current location and heading based on current KB knowledge state
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.infer_and_set_belief_location()"
+        </span>agent<span style="font-weight: bold">.</span>infer_and_set_belief_location<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.infer_and_set_belief_heading()"
+        </span>agent<span style="font-weight: bold">.</span>infer_and_set_belief_heading<span style="font-weight: bold">()
+
+	</span>clauses_before <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"     HWA.agent_program(): Prepare to add temporal axioms"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Number of clauses in KB before: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>clauses_before<span style="font-weight: bold">)
+        </span>agent<span style="font-weight: bold">.</span>add_temporal_axioms<span style="font-weight: bold">()
+        </span>clauses_after <span style="font-weight: bold">= </span>len<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Number of clauses in KB after: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>clauses_after<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"         Total clauses added to KB: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>clauses_after <span style="font-weight: bold">- </span>clauses_before<span style="font-weight: bold">)
+        </span>agent<span style="font-weight: bold">.</span>number_of_clauses_over_epochs<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">))
+
+        </span>action <span style="font-weight: bold">= </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">while not </span>action<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"[{0}] You perceive: {1}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>time<span style="font-weight: bold">,
+                                                   </span>agent<span style="font-weight: bold">.</span>pretty_percept_vector<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">))
+            </span>val <span style="font-weight: bold">= </span>raw_input<span style="font-weight: bold">(</span><span style="color: red">"Enter Action ('?' for list of commands): "</span><span style="font-weight: bold">)
+            </span>val <span style="font-weight: bold">= </span>val<span style="font-weight: bold">.</span>strip<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">if </span>val <span style="color: blue; font-weight: bold">in </span>helping<span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print
+                </span>show_commands<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print
+            elif </span>val <span style="color: blue; font-weight: bold">in </span>stopping<span style="font-weight: bold">:
+                </span>action <span style="font-weight: bold">= </span><span style="color: red">'Stop'
+            </span><span style="color: blue; font-weight: bold">elif </span>val <span style="color: blue; font-weight: bold">in </span>actions<span style="font-weight: bold">:
+                </span>action <span style="font-weight: bold">= </span>val
+            <span style="color: blue; font-weight: bold">elif </span>val <span style="font-weight: bold">== </span><span style="color: red">'env'</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print
+                print </span><span style="color: red">"Current wumpus environment:"
+                </span><span style="color: blue; font-weight: bold">print </span>agent<span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>to_string<span style="font-weight: bold">()
+            </span><span style="color: blue; font-weight: bold">elif </span>val <span style="font-weight: bold">== </span><span style="color: red">'props'</span><span style="font-weight: bold">:
+                </span><span style="color: blue; font-weight: bold">print
+                </span>show_propositions<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print
+            elif </span>val <span style="font-weight: bold">== </span><span style="color: red">'kbsat'</span><span style="font-weight: bold">:
+                </span>check_kb_status<span style="font-weight: bold">()
+                </span><span style="color: blue; font-weight: bold">print
+            elif </span>val <span style="font-weight: bold">== </span><span style="color: red">'save-axioms'</span><span style="font-weight: bold">:
+                </span>write_list_to_text_file<span style="font-weight: bold">(</span><span style="color: red">'kb-axioms.txt'</span><span style="font-weight: bold">,</span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>axioms<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Saved to 'kb-axioms.txt'"
+                </span><span style="color: blue; font-weight: bold">print
+            elif </span>val <span style="font-weight: bold">== </span><span style="color: red">'save-clauses'</span><span style="font-weight: bold">:
+                </span>write_list_to_text_file<span style="font-weight: bold">(</span><span style="color: red">'kb-clauses.txt'</span><span style="font-weight: bold">,</span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>clauses<span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"   Saved to 'kb-clauses.txt'"
+                </span><span style="color: blue; font-weight: bold">print
+            else</span><span style="font-weight: bold">:
+                </span>q <span style="font-weight: bold">= </span>val<span style="font-weight: bold">.</span>split<span style="font-weight: bold">(</span><span style="color: red">' '</span><span style="font-weight: bold">)
+                </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>q<span style="font-weight: bold">) == </span><span style="color: red">2 </span><span style="color: blue; font-weight: bold">and </span>q<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">] == </span><span style="color: red">'qp'</span><span style="font-weight: bold">:
+                    </span>simple_query<span style="font-weight: bold">(</span>q<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">])
+                    </span><span style="color: blue; font-weight: bold">print
+                elif </span>len<span style="font-weight: bold">(</span>q<span style="font-weight: bold">) == </span><span style="color: red">2 </span><span style="color: blue; font-weight: bold">and </span>q<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">] == </span><span style="color: red">'qpl'</span><span style="font-weight: bold">:
+                    </span>location_based_query<span style="font-weight: bold">(</span>q<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">])
+                    </span><span style="color: blue; font-weight: bold">print
+                elif </span>len<span style="font-weight: bold">(</span>q<span style="font-weight: bold">) == </span><span style="color: red">3 </span><span style="color: blue; font-weight: bold">and </span>q<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">] == </span><span style="color: red">'qplt'</span><span style="font-weight: bold">:
+                    </span>location_time_based_query<span style="font-weight: bold">(</span>q<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">],</span>q<span style="font-weight: bold">[</span><span style="color: red">2</span><span style="font-weight: bold">])
+                    </span><span style="color: blue; font-weight: bold">print
+                elif </span>q<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">] == </span><span style="color: red">'q!'</span><span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>q<span style="font-weight: bold">) == </span><span style="color: red">2</span><span style="font-weight: bold">:
+                        </span>t <span style="font-weight: bold">= </span>int<span style="font-weight: bold">(</span>q<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">])
+                        </span>run_all_queries<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+                    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+                        </span>run_all_queries<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>time<span style="font-weight: bold">)
+                    </span><span style="color: blue; font-weight: bold">print
+                else</span><span style="font-weight: bold">:
+                    </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"'{0}' is an invalid command;"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>val<span style="font-weight: bold">) </span>\
+                          <span style="font-weight: bold">+ </span><span style="color: red">" try again (enter '?' for list of commands)"
+                    </span><span style="color: blue; font-weight: bold">print
+
+        </span><span style="color: green; font-style: italic"># update KB with selected action
+        </span>agent<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">.</span>tell<span style="font-weight: bold">(</span>add_time_stamp<span style="font-weight: bold">(</span>action<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">.</span>time<span style="font-weight: bold">))
+
+        </span>agent<span style="font-weight: bold">.</span>time <span style="font-weight: bold">+= </span><span style="color: red">1
+        
+        </span><span style="color: blue; font-weight: bold">return </span>action
+
+    agent<span style="font-weight: bold">.</span>program <span style="font-weight: bold">= </span>manual_kb_program
+    <span style="color: blue; font-weight: bold">return </span>agent
+
+<span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Test MiniSat connection
+#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>run_minisat_test<span style="font-weight: bold">():
+    </span><span style="color: darkred">"""
+    Test connection to MiniSat
+    """
+    </span><span style="color: blue; font-weight: bold">import </span>logic
+
+    queries <span style="font-weight: bold">= [(</span><span style="color: red">"(P | ~P)"</span><span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">), </span><span style="color: green; font-style: italic"># SAT
+               </span><span style="font-weight: bold">(</span><span style="color: red">"(P &amp; ~P)"</span><span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">), </span><span style="color: green; font-style: italic"># UNSAT
+               </span><span style="font-weight: bold">(</span><span style="color: red">"(P | R) &lt;=&gt; (~(Q | R) &amp; (R &gt;&gt; ~(S &lt;=&gt; T)))"</span><span style="font-weight: bold">, </span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">) </span><span style="color: green; font-style: italic"># SAT
+               </span><span style="font-weight: bold">]
+    
+    </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Running simple MiniSat test:"
+    </span>t <span style="font-weight: bold">= </span><span style="color: red">1
+    </span>failed <span style="font-weight: bold">= []
+    </span><span style="color: blue; font-weight: bold">for </span>query<span style="font-weight: bold">, </span>expected_result <span style="color: blue; font-weight: bold">in </span>queries<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"-----------------------------------------------------"
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Test {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"  Query:      '{0}'"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+        </span>query <span style="font-weight: bold">= </span>logic<span style="font-weight: bold">.</span>conjuncts<span style="font-weight: bold">(</span>logic<span style="font-weight: bold">.</span>to_cnf<span style="font-weight: bold">(</span>logic<span style="font-weight: bold">.</span>expr<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)))
+        </span>result <span style="font-weight: bold">= </span>minisat<span style="font-weight: bold">(</span>query<span style="font-weight: bold">, </span><span style="color: blue">None</span><span style="font-weight: bold">, </span>variable<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">, </span>value<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">True</span><span style="font-weight: bold">, </span>verbose<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"  Query CNF:  {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>query<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"  Result:     {0}   (Expected: {1})"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>result<span style="font-weight: bold">.</span>success<span style="font-weight: bold">, </span>expected_result<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>result<span style="font-weight: bold">.</span>success <span style="font-weight: bold">!= </span>expected_result<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"    FAILURE: unexpected result."
+            </span>failed<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>t<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>result<span style="font-weight: bold">.</span>success<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"  Variable Assignment: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>result<span style="font-weight: bold">.</span>varmap<span style="font-weight: bold">)
+        </span>t <span style="font-weight: bold">+= </span><span style="color: red">1
+    </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"-----------------------------------------------------"
+    </span><span style="color: blue; font-weight: bold">if not </span>failed<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Successfully passed {0} tests."</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>queries<span style="font-weight: bold">))
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"Passed {0} test(s)."</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>len<span style="font-weight: bold">(</span>queries<span style="font-weight: bold">) - </span>len<span style="font-weight: bold">(</span>failed<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"The following tests failed: {0}"</span><span style="font-weight: bold">.</span>format<span style="font-weight: bold">(</span>failure<span style="font-weight: bold">)
+    </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"DONE."
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+# Command-line interface
+#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">def </span>default<span style="font-weight: bold">(</span>str<span style="font-weight: bold">):
+  </span><span style="color: blue; font-weight: bold">return </span>str <span style="font-weight: bold">+ </span><span style="color: red">' [Default: %default]'
+
+</span><span style="color: blue; font-weight: bold">def </span>readCommand<span style="font-weight: bold">( </span>argv <span style="font-weight: bold">):
+    </span><span style="color: darkred">"""
+    Processes the command used to run wumpus.py from the command line.
+    """
+    </span><span style="color: blue; font-weight: bold">from </span>optparse <span style="color: blue; font-weight: bold">import </span>OptionParser
+    usageStr <span style="font-weight: bold">= </span><span style="color: darkred">"""
+    USAGE:     python wumpus.py &lt;options&gt;
+    EXAMPLES:  (1) python wumpus.py
+                   - starts simple manual Hunt The Wumpus game
+               (2) python wumpus.py -k OR python wumpus.py --kb
+                   - starts simple manual Hunt The Wumpus game with
+                   knowledge base and interactive queries possible
+    """
+    </span>parser <span style="font-weight: bold">= </span>OptionParser<span style="font-weight: bold">(</span>usageStr<span style="font-weight: bold">)
+
+    </span>parser<span style="font-weight: bold">.</span>add_option<span style="font-weight: bold">(</span><span style="color: red">'-k'</span><span style="font-weight: bold">, </span><span style="color: red">'--kb'</span><span style="font-weight: bold">, </span>action<span style="font-weight: bold">=</span><span style="color: red">'store_true'</span><span style="font-weight: bold">, </span>dest<span style="font-weight: bold">=</span><span style="color: red">'kb'</span><span style="font-weight: bold">, </span>default<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">,
+                      </span>help<span style="font-weight: bold">=</span>default<span style="font-weight: bold">(</span><span style="color: red">"Instantiate a queriable knowledge base"</span><span style="font-weight: bold">))
+    </span>parser<span style="font-weight: bold">.</span>add_option<span style="font-weight: bold">(</span><span style="color: red">'-y'</span><span style="font-weight: bold">, </span><span style="color: red">'--hybrid'</span><span style="font-weight: bold">, </span>action<span style="font-weight: bold">=</span><span style="color: red">'store_true'</span><span style="font-weight: bold">, </span>dest<span style="font-weight: bold">=</span><span style="color: red">'hybrid'</span><span style="font-weight: bold">, </span>default<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">,
+                      </span>help<span style="font-weight: bold">=</span>default<span style="font-weight: bold">(</span><span style="color: red">"Run hybrid wumpus agent" </span>\
+                                   <span style="font-weight: bold">+ </span><span style="color: red">" (takes precedence over -k option)"</span><span style="font-weight: bold">))
+    </span>parser<span style="font-weight: bold">.</span>add_option<span style="font-weight: bold">(</span><span style="color: red">'-l'</span><span style="font-weight: bold">, </span><span style="color: red">'--layout'</span><span style="font-weight: bold">, </span>dest<span style="font-weight: bold">=</span><span style="color: red">'layout'</span><span style="font-weight: bold">, </span>default<span style="font-weight: bold">=</span><span style="color: blue">None</span><span style="font-weight: bold">,
+                      </span>help<span style="font-weight: bold">=</span>default<span style="font-weight: bold">(</span><span style="color: red">"Load layout file"</span><span style="font-weight: bold">))
+
+    </span>parser<span style="font-weight: bold">.</span>add_option<span style="font-weight: bold">(</span><span style="color: red">'-t'</span><span style="font-weight: bold">, </span><span style="color: red">'--test'</span><span style="font-weight: bold">, </span>action<span style="font-weight: bold">=</span><span style="color: red">'store_true'</span><span style="font-weight: bold">, </span>dest<span style="font-weight: bold">=</span><span style="color: red">'test_minisat'</span><span style="font-weight: bold">,
+                      </span>default<span style="font-weight: bold">=</span><span style="color: blue; font-weight: bold">False</span><span style="font-weight: bold">,
+                      </span>help<span style="font-weight: bold">=</span>default<span style="font-weight: bold">(</span><span style="color: red">"Test connection to command-line MiniSat"</span><span style="font-weight: bold">))
+
+    </span>options<span style="font-weight: bold">, </span>otherjunk <span style="font-weight: bold">= </span>parser<span style="font-weight: bold">.</span>parse_args<span style="font-weight: bold">(</span>argv<span style="font-weight: bold">)
+    
+    </span><span style="color: blue; font-weight: bold">if </span>len<span style="font-weight: bold">(</span>otherjunk<span style="font-weight: bold">) != </span><span style="color: red">0</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">raise </span>Exception<span style="font-weight: bold">(</span><span style="color: red">"Command line input not understood: " </span><span style="font-weight: bold">+ </span>str<span style="font-weight: bold">(</span>otherjunk<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">return </span>options
+
+<span style="color: blue; font-weight: bold">def </span>run_command<span style="font-weight: bold">(</span>options<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">if </span>options<span style="font-weight: bold">.</span>test_minisat<span style="font-weight: bold">:
+        </span>run_minisat_test<span style="font-weight: bold">()
+        </span><span style="color: blue; font-weight: bold">return
+    if </span>options<span style="font-weight: bold">.</span>hybrid<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>options<span style="font-weight: bold">.</span>layout<span style="font-weight: bold">:
+            </span>s <span style="font-weight: bold">= </span>world_scenario_hybrid_wumpus_agent_from_layout<span style="font-weight: bold">(</span>options<span style="font-weight: bold">.</span>layout<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>s <span style="font-weight: bold">= </span>wscenario_4x4_HybridWumpusAgent<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">elif </span>options<span style="font-weight: bold">.</span>kb<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>options<span style="font-weight: bold">.</span>layout<span style="font-weight: bold">:
+            </span>s <span style="font-weight: bold">= </span>world_scenario_manual_with_kb_from_layout<span style="font-weight: bold">(</span>options<span style="font-weight: bold">.</span>layout<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>s <span style="font-weight: bold">= </span>wscenario_4x4_manual_HybridWumpusAgent<span style="font-weight: bold">()
+    </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>options<span style="font-weight: bold">.</span>layout<span style="font-weight: bold">:
+            </span>s <span style="font-weight: bold">= </span>world_scenario_manual_from_layout<span style="font-weight: bold">(</span>options<span style="font-weight: bold">.</span>layout<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>s <span style="font-weight: bold">= </span>wscenario_4x4_manual<span style="font-weight: bold">()
+    </span>s<span style="font-weight: bold">.</span>run<span style="font-weight: bold">()
+
+</span><span style="color: green; font-style: italic">#-------------------------------------------------------------------------------
+
+</span><span style="color: blue; font-weight: bold">if </span>__name__ <span style="font-weight: bold">== </span><span style="color: red">'__main__'</span><span style="font-weight: bold">:
+    </span><span style="color: darkred">"""
+    The main funciton called when wumpus_test.py is run from the command line:
+    &gt; python wumpus_test.py &lt;options&gt;
+    """
+    </span>options <span style="font-weight: bold">= </span>readCommand<span style="font-weight: bold">( </span>sys<span style="font-weight: bold">.</span>argv<span style="font-weight: bold">[</span><span style="color: red">1</span><span style="font-weight: bold">:] )
+    </span>run_command<span style="font-weight: bold">( </span>options <span style="font-weight: bold">)
+</span>
+    </pre>
+    </body>
+    </html>
+    

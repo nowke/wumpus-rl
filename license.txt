@@ -1,0 +1,15 @@
+Licensing Information:
+Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+The Hunt The Wumpus AI project was developed at University of Arizona
+by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+This project extends the python code provided by Peter Norvig as part of
+the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+see http://aima.cs.berkeley.edu/code.html
+In particular, the following files come directly from the AIMA python
+code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+('logic.py' has been modified by Clay Morrison in locations with the
+comment 'CTM')
+The file ['minisat.py'] implements a slim system call wrapper to the minisat
+(see http://minisat.se) SAT solver, and is directly based on the satispy
+python project, see https://github.com/netom/satispy .

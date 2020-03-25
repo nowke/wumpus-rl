@@ -1,0 +1,596 @@
+<html>
+    <head>
+    <title>agents.py</title>
+    </head>
+    <body>
+    <h3>agents.py (<a href="../agents.py">original</a>)</h3>
+    <hr>
+    <pre>
+<span style="color: green; font-style: italic"># agents.py
+# ---------
+# Licensing Information:
+# Please DO NOT DISTRIBUTE OR PUBLISH solutions to this project.
+# You are free to use and extend these projects for EDUCATIONAL PURPOSES ONLY.
+# The Hunt The Wumpus AI project was developed at University of Arizona
+# by Clay Morrison (clayton@sista.arizona.edu), spring 2013.
+# This project extends the python code provided by Peter Norvig as part of
+# the Artificial Intelligence: A Modern Approach (AIMA) book example code;
+# see http://aima.cs.berkeley.edu/code.html
+# In particular, the following files come directly from the AIMA python
+# code: ['agents.py', 'logic.py', 'search.py', 'utils.py']
+# ('logic.py' has been modified by Clay Morrison in locations with the
+# comment 'CTM')
+# The file ['minisat.py'] implements a slim system call wrapper to the minisat
+# (see http://minisat.se) SAT solver, and is directly based on the satispy
+# python project, see https://github.com/netom/satispy .
+
+</span><span style="color: darkred">"""Implement Agents and Environments (Chapters 1-2).
+
+The class hierarchies are as follows:
+
+Thing ## A physical object that can exist in an environment
+    Agent
+        Wumpus
+    Dirt
+    Wall
+    ...
+
+Environment ## An environment holds objects, runs simulations
+    XYEnvironment
+        VacuumEnvironment
+        WumpusEnvironment
+
+An agent program is a callable instance, taking percepts and choosing actions
+    SimpleReflexAgentProgram
+    ...
+
+EnvGUI ## A window with a graphical representation of the Environment
+
+EnvToolbar ## contains buttons for controlling EnvGUI
+
+EnvCanvas ## Canvas to display the environment of an EnvGUI
+
+"""
+</span><span style="color: blue; font-weight: bold">from </span>utils <span style="color: blue; font-weight: bold">import </span><span style="font-weight: bold">*
+</span><span style="color: blue; font-weight: bold">import </span>random<span style="font-weight: bold">, </span>copy
+
+<span style="color: blue; font-weight: bold">class </span>Thing<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""This represents any physical object that can appear in an Environment.
+    You subclass Thing to get the things you want.  Each thing can have a
+    .__name__  slot (used for output only)."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__repr__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'&lt;%s&gt;' </span><span style="font-weight: bold">% </span>getattr<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span><span style="color: red">'__name__'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>__class__<span style="font-weight: bold">.</span>__name__<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>is_alive<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Things that are 'alive' should return true."""
+        </span><span style="color: blue; font-weight: bold">return </span>hasattr<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span><span style="color: red">'alive'</span><span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">and </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>alive
+
+    <span style="color: blue; font-weight: bold">def </span>show_state<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Display the agent's internal state.  Subclasses should override."""
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">"I don't know how to show_state."
+
+    </span><span style="color: blue; font-weight: bold">def </span>display<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>canvas<span style="font-weight: bold">, </span>x<span style="font-weight: bold">, </span>y<span style="font-weight: bold">, </span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Display an image of this Thing on the canvas."""
+        </span><span style="color: blue; font-weight: bold">pass
+
+
+class </span>Agent<span style="font-weight: bold">(</span>Thing<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""An Agent is a subclass of Thing with one required slot,
+    .program, which should hold a function that takes one argument, the
+    percept, and returns an action. (What counts as a percept or action
+    will depend on the specific environment in which the agent exists.)
+    Note that 'program' is a slot, not a method.  If it were a method,
+    then the program could 'cheat' and look at aspects of the agent.
+    It's not supposed to do that: the program can only look at the
+    percepts.  An agent program that needs a model of the world (and of
+    the agent itself) will have to build and maintain its own model.
+    There is an optional slot, .performance, which is a number giving
+    the performance measure of the agent in its environment."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>program <span style="font-weight: bold">= </span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>alive <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>bump <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+        if </span>program <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+
+            </span><span style="color: blue; font-weight: bold">def </span>program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+                </span><span style="color: blue; font-weight: bold">return </span>raw_input<span style="font-weight: bold">(</span><span style="color: red">'Percept=%s; action? ' </span><span style="font-weight: bold">% </span>percept<span style="font-weight: bold">)
+
+        </span><span style="color: blue; font-weight: bold">assert </span>callable<span style="font-weight: bold">(</span>program<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>program <span style="font-weight: bold">= </span>program
+
+    <span style="color: blue; font-weight: bold">def </span>can_grab<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Returns True if this agent can grab this thing.
+        Override for appropriate subclasses of Agent and Thing."""
+        </span><span style="color: blue; font-weight: bold">return False
+
+
+def </span>TraceAgent<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Wrap the agent's program to print its input and output. This will let
+    you see what the agent is doing in the environment."""
+    </span>old_program <span style="font-weight: bold">= </span>agent<span style="font-weight: bold">.</span>program
+
+    <span style="color: blue; font-weight: bold">def </span>new_program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+        </span>action <span style="font-weight: bold">= </span>old_program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'%s perceives %s and does %s' </span><span style="font-weight: bold">% (</span>agent<span style="font-weight: bold">, </span>percept<span style="font-weight: bold">, </span>action<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>action
+
+    agent<span style="font-weight: bold">.</span>program <span style="font-weight: bold">= </span>new_program
+    <span style="color: blue; font-weight: bold">return </span>agent
+
+
+<span style="color: blue; font-weight: bold">def </span>TableDrivenAgentProgram<span style="font-weight: bold">(</span>table<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""This agent selects an action based on the percept sequence.
+    It is practical only for tiny domains.
+    To customize it, provide as table a dictionary of all
+    {percept_sequence:action} pairs. [Fig. 2.7]"""
+    </span>percepts <span style="font-weight: bold">= []
+
+    </span><span style="color: blue; font-weight: bold">def </span>program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+        </span>percepts<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">)
+        </span>action <span style="font-weight: bold">= </span>table<span style="font-weight: bold">.</span>get<span style="font-weight: bold">(</span>tuple<span style="font-weight: bold">(</span>percepts<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">return </span>action
+
+    <span style="color: blue; font-weight: bold">return </span>program
+
+
+<span style="color: blue; font-weight: bold">def </span>RandomAgentProgram<span style="font-weight: bold">(</span>actions<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""An agent that chooses an action at random, ignoring all percepts."""
+    </span><span style="color: blue; font-weight: bold">return lambda </span>percept<span style="font-weight: bold">: </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span>actions<span style="font-weight: bold">)
+
+
+</span><span style="color: blue; font-weight: bold">def </span>SimpleReflexAgentProgram<span style="font-weight: bold">(</span>rules<span style="font-weight: bold">, </span>interpret_input<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""This agent takes action based solely on the percept. [Fig. 2.10]"""
+
+    </span><span style="color: blue; font-weight: bold">def </span>program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+        </span>state <span style="font-weight: bold">= </span>interpret_input<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">)
+        </span>rule <span style="font-weight: bold">= </span>rule_match<span style="font-weight: bold">(</span>state<span style="font-weight: bold">, </span>rules<span style="font-weight: bold">)
+        </span>action <span style="font-weight: bold">= </span>rule<span style="font-weight: bold">.</span>action
+        <span style="color: blue; font-weight: bold">return </span>action
+
+    <span style="color: blue; font-weight: bold">return </span>program
+
+
+<span style="color: blue; font-weight: bold">def </span>ModelBasedReflexAgentProgram<span style="font-weight: bold">(</span>rules<span style="font-weight: bold">, </span>update_state<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""This agent takes action based on the percept and state. [Fig. 2.12]"""
+
+    </span><span style="color: blue; font-weight: bold">def </span>program<span style="font-weight: bold">(</span>percept<span style="font-weight: bold">):
+        </span>program<span style="font-weight: bold">.</span>state <span style="font-weight: bold">= </span>update_state<span style="font-weight: bold">(</span>program<span style="font-weight: bold">.</span>state<span style="font-weight: bold">, </span>program<span style="font-weight: bold">.</span>action<span style="font-weight: bold">, </span>percept<span style="font-weight: bold">)
+        </span>rule <span style="font-weight: bold">= </span>rule_match<span style="font-weight: bold">(</span>program<span style="font-weight: bold">.</span>state<span style="font-weight: bold">, </span>rules<span style="font-weight: bold">)
+        </span>action <span style="font-weight: bold">= </span>rule<span style="font-weight: bold">.</span>action
+        <span style="color: blue; font-weight: bold">return </span>action
+
+    program<span style="font-weight: bold">.</span>state <span style="font-weight: bold">= </span>program<span style="font-weight: bold">.</span>action <span style="font-weight: bold">= </span><span style="color: blue">None
+    </span><span style="color: blue; font-weight: bold">return </span>program
+
+
+<span style="color: blue; font-weight: bold">def </span>rule_match<span style="font-weight: bold">(</span>state<span style="font-weight: bold">, </span>rules<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Find the first rule that matches state."""
+    </span><span style="color: blue; font-weight: bold">for </span>rule <span style="color: blue; font-weight: bold">in </span>rules<span style="font-weight: bold">:
+        </span><span style="color: blue; font-weight: bold">if </span>rule<span style="font-weight: bold">.</span>matches<span style="font-weight: bold">(</span>state<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">return </span>rule
+
+
+loc_A<span style="font-weight: bold">, </span>loc_B <span style="font-weight: bold">= (</span><span style="color: red">0</span><span style="font-weight: bold">, </span><span style="color: red">0</span><span style="font-weight: bold">), (</span><span style="color: red">1</span><span style="font-weight: bold">, </span><span style="color: red">0</span><span style="font-weight: bold">)
+
+</span><span style="color: blue; font-weight: bold">def </span>RandomVacuumAgent<span style="font-weight: bold">():
+    </span><span style="color: darkred">"""Randomly choose one of the actions from the vacuum environment."""
+    </span><span style="color: blue; font-weight: bold">return </span>Agent<span style="font-weight: bold">(</span>RandomAgentProgram<span style="font-weight: bold">([</span><span style="color: red">'Right'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'Left'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'Suck'</span><span style="font-weight: bold">,
+     </span><span style="color: red">'NoOp'</span><span style="font-weight: bold">]))
+
+
+</span><span style="color: blue; font-weight: bold">def </span>TableDrivenVacuumAgent<span style="font-weight: bold">():
+    </span><span style="color: darkred">"""[Fig. 2.3]"""
+    </span>table <span style="font-weight: bold">= {((</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">),): </span><span style="color: red">'Right'</span><span style="font-weight: bold">,
+     ((</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">),): </span><span style="color: red">'Suck'</span><span style="font-weight: bold">,
+     ((</span>loc_B<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">),): </span><span style="color: red">'Left'</span><span style="font-weight: bold">,
+     ((</span>loc_B<span style="font-weight: bold">, </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">),): </span><span style="color: red">'Suck'</span><span style="font-weight: bold">,
+     ((</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">), (</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">)): </span><span style="color: red">'Right'</span><span style="font-weight: bold">,
+     ((</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">), (</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">)): </span><span style="color: red">'Suck'</span><span style="font-weight: bold">,
+     ((</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">), (</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">), (</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">)): </span><span style="color: red">'Right'</span><span style="font-weight: bold">,
+     ((</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">), (</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">), (</span>loc_A<span style="font-weight: bold">, </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">)): </span><span style="color: red">'Suck'</span><span style="font-weight: bold">}
+    </span><span style="color: blue; font-weight: bold">return </span>Agent<span style="font-weight: bold">(</span>TableDrivenAgentProgram<span style="font-weight: bold">(</span>table<span style="font-weight: bold">))
+
+
+</span><span style="color: blue; font-weight: bold">def </span>ReflexVacuumAgent<span style="font-weight: bold">():
+    </span><span style="color: darkred">"""A reflex agent for the two-state vacuum environment. [Fig. 2.8]"""
+
+    </span><span style="color: blue; font-weight: bold">def </span>program<span style="font-weight: bold">((</span>location<span style="font-weight: bold">, </span>status<span style="font-weight: bold">)):
+        </span><span style="color: blue; font-weight: bold">if </span>status <span style="font-weight: bold">== </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Suck'
+        </span><span style="color: blue; font-weight: bold">if </span>location <span style="font-weight: bold">== </span>loc_A<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Right'
+        </span><span style="color: blue; font-weight: bold">if </span>location <span style="font-weight: bold">== </span>loc_B<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Left'
+
+    </span><span style="color: blue; font-weight: bold">return </span>Agent<span style="font-weight: bold">(</span>program<span style="font-weight: bold">)
+
+
+</span><span style="color: blue; font-weight: bold">def </span>ModelBasedVacuumAgent<span style="font-weight: bold">():
+    </span><span style="color: darkred">"""An agent that keeps track of what locations are clean or dirty."""
+    </span>model <span style="font-weight: bold">= {</span>loc_A<span style="font-weight: bold">: </span><span style="color: blue">None</span><span style="font-weight: bold">,
+     </span>loc_B<span style="font-weight: bold">: </span><span style="color: blue">None</span><span style="font-weight: bold">}
+
+    </span><span style="color: blue; font-weight: bold">def </span>program<span style="font-weight: bold">((</span>location<span style="font-weight: bold">, </span>status<span style="font-weight: bold">)):
+        </span><span style="color: darkred">"""Same as ReflexVacuumAgent, except if everything is clean, do NoOp."""
+        </span>model<span style="font-weight: bold">[</span>location<span style="font-weight: bold">] = </span>status
+        <span style="color: blue; font-weight: bold">if </span>model<span style="font-weight: bold">[</span>loc_A<span style="font-weight: bold">] == </span>model<span style="font-weight: bold">[</span>loc_B<span style="font-weight: bold">] == </span><span style="color: red">'Clean'</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'NoOp'
+        </span><span style="color: blue; font-weight: bold">if </span>status <span style="font-weight: bold">== </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Suck'
+        </span><span style="color: blue; font-weight: bold">if </span>location <span style="font-weight: bold">== </span>loc_A<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Right'
+        </span><span style="color: blue; font-weight: bold">if </span>location <span style="font-weight: bold">== </span>loc_B<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">return </span><span style="color: red">'Left'
+
+    </span><span style="color: blue; font-weight: bold">return </span>Agent<span style="font-weight: bold">(</span>program<span style="font-weight: bold">)
+
+
+</span><span style="color: blue; font-weight: bold">class </span>Environment<span style="font-weight: bold">(</span>object<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Abstract class representing an Environment.  'Real' Environment classes
+    inherit from this. Your Environment will typically need to implement:
+        percept:           Define the percept that an agent sees.
+        execute_action:    Define the effects of executing an action.
+                           Also update the agent.performance slot.
+    The environment keeps a list of .things and .agents (which is a subset
+    of .things). Each agent has a .performance slot, initialized to 0.
+    Each thing has a .location slot, even though some environments may not
+    need this."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things <span style="font-weight: bold">= []
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agents <span style="font-weight: bold">= []
+
+    </span><span style="color: blue; font-weight: bold">def </span>thing_classes<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[]
+
+    </span><span style="color: blue; font-weight: bold">def </span>percept<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return the percept that the agent sees at this point. (Implement this.)"""
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>execute_action<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Change the world to reflect this action. (Implement this.)"""
+        </span>abstract
+
+    <span style="color: blue; font-weight: bold">def </span>default_location<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Default location to place a new thing with unspecified location."""
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">None
+
+    </span><span style="color: blue; font-weight: bold">def </span>exogenous_change<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""If there is spontaneous change in the world, override this."""
+        </span><span style="color: blue; font-weight: bold">pass
+
+    def </span>is_done<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""By default, we're done when we can't find a live agent."""
+        </span><span style="color: blue; font-weight: bold">return not </span>any<span style="font-weight: bold">((</span>agent<span style="font-weight: bold">.</span>is_alive<span style="font-weight: bold">() </span><span style="color: blue; font-weight: bold">for </span>agent <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agents<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>step<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Run the environment for one time step. If the
+        actions and exogenous changes are independent, this method will
+        do.  If there are interactions between them, you'll need to
+        override this method."""
+        </span><span style="color: blue; font-weight: bold">if not </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>is_done<span style="font-weight: bold">():
+            </span>actions <span style="font-weight: bold">= [ </span>agent<span style="font-weight: bold">.</span>program<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>percept<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">)) </span><span style="color: blue; font-weight: bold">for </span>agent <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agents <span style="font-weight: bold">]
+            </span><span style="color: blue; font-weight: bold">for </span>agent<span style="font-weight: bold">, </span>action <span style="color: blue; font-weight: bold">in </span>zip<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agents<span style="font-weight: bold">, </span>actions<span style="font-weight: bold">):
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>execute_action<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span>action<span style="font-weight: bold">)
+
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>exogenous_change<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>run<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>steps <span style="font-weight: bold">= </span><span style="color: red">1000</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Run the Environment for given number of time steps."""
+        </span><span style="color: blue; font-weight: bold">for </span>step <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>steps<span style="font-weight: bold">):
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>is_done<span style="font-weight: bold">():
+                </span><span style="color: blue; font-weight: bold">return
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>step<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>list_things_at<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>location<span style="font-weight: bold">, </span>tclass <span style="font-weight: bold">= </span>Thing<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return all things exactly at a given location."""
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[ </span>thing
+                 <span style="color: blue; font-weight: bold">for </span>thing <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things
+                 <span style="color: blue; font-weight: bold">if </span>thing<span style="font-weight: bold">.</span>location <span style="font-weight: bold">== </span>location <span style="color: blue; font-weight: bold">and </span>isinstance<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">, </span>tclass<span style="font-weight: bold">) ]
+
+    </span><span style="color: blue; font-weight: bold">def </span>some_things_at<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>location<span style="font-weight: bold">, </span>tclass <span style="font-weight: bold">= </span>Thing<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return true if at least one of the things at location
+        is an instance of class tclass (or a subclass)."""
+        </span><span style="color: blue; font-weight: bold">return </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>list_things_at<span style="font-weight: bold">(</span>location<span style="font-weight: bold">, </span>tclass<span style="font-weight: bold">) != []
+
+    </span><span style="color: blue; font-weight: bold">def </span>add_thing<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">, </span>location <span style="font-weight: bold">= </span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Add a thing to the environment, setting its location. For
+        convenience, if thing is an agent program we make a new agent
+        for it. (Shouldn't need to override this."""
+        </span><span style="color: blue; font-weight: bold">if not </span>isinstance<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">, </span>Thing<span style="font-weight: bold">):
+            </span>thing <span style="font-weight: bold">= </span>Agent<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">assert </span>thing <span style="color: blue; font-weight: bold">not in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things<span style="font-weight: bold">, </span><span style="color: red">"Don't add the same thing twice"
+        </span>thing<span style="font-weight: bold">.</span>location <span style="font-weight: bold">= </span>location <span style="color: blue; font-weight: bold">or </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>default_location<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>isinstance<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">, </span>Agent<span style="font-weight: bold">):
+            </span>thing<span style="font-weight: bold">.</span>performance <span style="font-weight: bold">= </span><span style="color: red">0
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agents<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>delete_thing<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Remove a thing from the environment."""
+        </span><span style="color: blue; font-weight: bold">try</span><span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things<span style="font-weight: bold">.</span>remove<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">except </span>ValueError as e<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span>e
+            <span style="color: blue; font-weight: bold">print </span><span style="color: red">'  in Environment delete_thing'
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'  Thing to be removed: %s at %s' </span><span style="font-weight: bold">% (</span>thing<span style="font-weight: bold">, </span>thing<span style="font-weight: bold">.</span>location<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'  from list: %s' </span><span style="font-weight: bold">% [ (</span>thing<span style="font-weight: bold">, </span>thing<span style="font-weight: bold">.</span>location<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>thing <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things <span style="font-weight: bold">]
+
+        </span><span style="color: blue; font-weight: bold">if </span>thing <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agents<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>agents<span style="font-weight: bold">.</span>remove<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+
+
+</span><span style="color: blue; font-weight: bold">class </span>XYEnvironment<span style="font-weight: bold">(</span>Environment<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""This class is for environments on a 2D plane, with locations
+    labelled by (x, y) points, either discrete or continuous.
+    
+    Agents perceive things within a radius.  Each agent in the
+    environment has a .location slot which should be a location such
+    as (0, 1), and a .holding slot, which should be a list of things
+    that are held."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>width <span style="font-weight: bold">= </span><span style="color: red">10</span><span style="font-weight: bold">, </span>height <span style="font-weight: bold">= </span><span style="color: red">10</span><span style="font-weight: bold">):
+        </span>super<span style="font-weight: bold">(</span>XYEnvironment<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>__init__<span style="font-weight: bold">()
+        </span>update<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>width<span style="font-weight: bold">=</span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">=</span>height<span style="font-weight: bold">, </span>observers<span style="font-weight: bold">=[])
+
+    </span><span style="color: blue; font-weight: bold">def </span>things_near<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>location<span style="font-weight: bold">, </span>radius <span style="font-weight: bold">= </span><span style="color: blue">None</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return all things within radius of location."""
+        </span><span style="color: blue; font-weight: bold">if </span>radius <span style="color: blue; font-weight: bold">is </span><span style="color: blue">None</span><span style="font-weight: bold">:
+            </span>radius <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>perceptible_distance
+        radius2 <span style="font-weight: bold">= </span>radius <span style="font-weight: bold">* </span>radius
+        <span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[ </span>thing <span style="color: blue; font-weight: bold">for </span>thing <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things <span style="color: blue; font-weight: bold">if </span>distance2<span style="font-weight: bold">(</span>location<span style="font-weight: bold">, </span>thing<span style="font-weight: bold">.</span>location<span style="font-weight: bold">) &lt;= </span>radius2 <span style="font-weight: bold">]
+
+    </span>perceptible_distance <span style="font-weight: bold">= </span><span style="color: red">1
+
+    </span><span style="color: blue; font-weight: bold">def </span>percept<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""By default, agent perceives things within a default radius."""
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[ </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>thing_percept<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">) </span><span style="color: blue; font-weight: bold">for </span>thing <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>things_near<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">) ]
+
+    </span><span style="color: blue; font-weight: bold">def </span>execute_action<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span>agent<span style="font-weight: bold">.</span>bump <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+        if </span>action <span style="font-weight: bold">== </span><span style="color: red">'TurnRight'</span><span style="font-weight: bold">:
+            </span>agent<span style="font-weight: bold">.</span>heading <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>turn_heading<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>heading<span style="font-weight: bold">, -</span><span style="color: red">1</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>action <span style="font-weight: bold">== </span><span style="color: red">'TurnLeft'</span><span style="font-weight: bold">:
+            </span>agent<span style="font-weight: bold">.</span>heading <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>turn_heading<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>heading<span style="font-weight: bold">, +</span><span style="color: red">1</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">elif </span>action <span style="font-weight: bold">== </span><span style="color: red">'Forward'</span><span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>move_to<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span>vector_add<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>heading<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">))
+        </span><span style="color: blue; font-weight: bold">elif </span>action <span style="font-weight: bold">== </span><span style="color: red">'Release'</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span>agent<span style="font-weight: bold">.</span>holding<span style="font-weight: bold">:
+                </span>agent<span style="font-weight: bold">.</span>holding<span style="font-weight: bold">.</span>pop<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>thing_percept<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">, </span>agent<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return the percept for this thing."""
+        </span><span style="color: blue; font-weight: bold">return </span>thing<span style="font-weight: bold">.</span>__class__<span style="font-weight: bold">.</span>__name__
+
+    <span style="color: blue; font-weight: bold">def </span>default_location<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">), </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>move_to<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">, </span>destination<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Move a thing to a new location."""
+        </span>thing<span style="font-weight: bold">.</span>bump <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>some_things_at<span style="font-weight: bold">(</span>destination<span style="font-weight: bold">, </span>Obstacle<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if not </span>thing<span style="font-weight: bold">.</span>bump<span style="font-weight: bold">:
+            </span>thing<span style="font-weight: bold">.</span>location <span style="font-weight: bold">= </span>destination
+            <span style="color: blue; font-weight: bold">for </span>o <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>observers<span style="font-weight: bold">:
+                </span>o<span style="font-weight: bold">.</span>thing_moved<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>add_thing<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">, </span>location <span style="font-weight: bold">= (</span><span style="color: red">1</span><span style="font-weight: bold">, </span><span style="color: red">1</span><span style="font-weight: bold">)):
+        </span>super<span style="font-weight: bold">(</span>XYEnvironment<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>add_thing<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">, </span>location<span style="font-weight: bold">)
+        </span>thing<span style="font-weight: bold">.</span>holding <span style="font-weight: bold">= []
+        </span>thing<span style="font-weight: bold">.</span>held <span style="font-weight: bold">= </span><span style="color: blue">None
+        </span><span style="color: blue; font-weight: bold">for </span>obs <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>observers<span style="font-weight: bold">:
+            </span>obs<span style="font-weight: bold">.</span>thing_added<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>delete_thing<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">):
+        </span>super<span style="font-weight: bold">(</span>XYEnvironment<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>delete_thing<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>obs <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>observers<span style="font-weight: bold">:
+            </span>obs<span style="font-weight: bold">.</span>thing_deleted<span style="font-weight: bold">(</span>thing<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>add_walls<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Put walls around the entire perimeter of the grid."""
+        </span><span style="color: blue; font-weight: bold">for </span>x <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width<span style="font-weight: bold">):
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Wall<span style="font-weight: bold">(), (</span>x<span style="font-weight: bold">, </span><span style="color: red">0</span><span style="font-weight: bold">))
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Wall<span style="font-weight: bold">(), (</span>x<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height <span style="font-weight: bold">- </span><span style="color: red">1</span><span style="font-weight: bold">))
+
+        </span><span style="color: blue; font-weight: bold">for </span>y <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>height<span style="font-weight: bold">):
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Wall<span style="font-weight: bold">(), (</span><span style="color: red">0</span><span style="font-weight: bold">, </span>y<span style="font-weight: bold">))
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>Wall<span style="font-weight: bold">(), (</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>width <span style="font-weight: bold">- </span><span style="color: red">1</span><span style="font-weight: bold">, </span>y<span style="font-weight: bold">))
+
+    </span><span style="color: blue; font-weight: bold">def </span>add_observer<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>observer<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Adds an observer to the list of observers.
+        An observer is typically an EnvGUI.
+        
+        Each observer is notified of changes in move_to and add_thing,
+        by calling the observer's methods thing_moved(thing)
+        and thing_added(thing, loc)."""
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>observers<span style="font-weight: bold">.</span>append<span style="font-weight: bold">(</span>observer<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>turn_heading<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>heading<span style="font-weight: bold">, </span>inc<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Return the heading to the left (inc=+1) or right (inc=-1) of heading."""
+        </span><span style="color: blue; font-weight: bold">return </span>turn_heading<span style="font-weight: bold">(</span>heading<span style="font-weight: bold">, </span>inc<span style="font-weight: bold">)
+
+
+</span><span style="color: blue; font-weight: bold">class </span>Obstacle<span style="font-weight: bold">(</span>Thing<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Something that can cause a bump, preventing an agent from
+    moving into the same square it's in."""
+    </span><span style="color: blue; font-weight: bold">pass
+
+
+class </span>Wall<span style="font-weight: bold">(</span>Obstacle<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">pass
+
+
+class </span>Dirt<span style="font-weight: bold">(</span>Thing<span style="font-weight: bold">):
+    </span><span style="color: blue; font-weight: bold">pass
+
+
+class </span>VacuumEnvironment<span style="font-weight: bold">(</span>XYEnvironment<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""The environment of [Ex. 2.12]. Agent perceives dirty or clean,
+    and bump (into obstacle) or not; 2D discrete world of unknown size;
+    performance measure is 100 for each dirt cleaned, and -1 for
+    each turn taken."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>width <span style="font-weight: bold">= </span><span style="color: red">10</span><span style="font-weight: bold">, </span>height <span style="font-weight: bold">= </span><span style="color: red">10</span><span style="font-weight: bold">):
+        </span>super<span style="font-weight: bold">(</span>VacuumEnvironment<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>__init__<span style="font-weight: bold">(</span>width<span style="font-weight: bold">, </span>height<span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>add_walls<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>thing_classes<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>Wall<span style="font-weight: bold">,
+         </span>Dirt<span style="font-weight: bold">,
+         </span>ReflexVacuumAgent<span style="font-weight: bold">,
+         </span>RandomVacuumAgent<span style="font-weight: bold">,
+         </span>TableDrivenVacuumAgent<span style="font-weight: bold">,
+         </span>ModelBasedVacuumAgent<span style="font-weight: bold">]
+
+    </span><span style="color: blue; font-weight: bold">def </span>percept<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""The percept is a tuple of ('Dirty' or 'Clean', 'Bump' or 'None').
+        Unlike the TrivialVacuumEnvironment, location is NOT perceived."""
+        </span>status <span style="font-weight: bold">= </span>if_<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>some_things_at<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">, </span>Dirt<span style="font-weight: bold">), </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">, </span><span style="color: red">'Clean'</span><span style="font-weight: bold">)
+        </span>bump <span style="font-weight: bold">= </span>if_<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>bump<span style="font-weight: bold">, </span><span style="color: red">'Bump'</span><span style="font-weight: bold">, </span><span style="color: red">'None'</span><span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>status<span style="font-weight: bold">, </span>bump<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>execute_action<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span>action <span style="font-weight: bold">== </span><span style="color: red">'Suck'</span><span style="font-weight: bold">:
+            </span>dirt_list <span style="font-weight: bold">= </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>list_things_at<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">, </span>Dirt<span style="font-weight: bold">)
+            </span><span style="color: blue; font-weight: bold">if </span>dirt_list <span style="font-weight: bold">!= []:
+                </span>dirt <span style="font-weight: bold">= </span>dirt_list<span style="font-weight: bold">[</span><span style="color: red">0</span><span style="font-weight: bold">]
+                </span>agent<span style="font-weight: bold">.</span>performance <span style="font-weight: bold">+= </span><span style="color: red">100
+                </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>delete_thing<span style="font-weight: bold">(</span>dirt<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">else</span><span style="font-weight: bold">:
+            </span>super<span style="font-weight: bold">(</span>VacuumEnvironment<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>execute_action<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">, </span>action<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">if </span>action <span style="font-weight: bold">!= </span><span style="color: red">'NoOp'</span><span style="font-weight: bold">:
+            </span>agent<span style="font-weight: bold">.</span>performance <span style="font-weight: bold">-= </span><span style="color: red">1
+
+
+</span><span style="color: blue; font-weight: bold">class </span>TrivialVacuumEnvironment<span style="font-weight: bold">(</span>Environment<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""This environment has two locations, A and B. Each can be Dirty
+    or Clean.  The agent perceives its location and the location's
+    status. This serves as an example of how to implement a simple
+    Environment."""
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span>super<span style="font-weight: bold">(</span>TrivialVacuumEnvironment<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>__init__<span style="font-weight: bold">()
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>status <span style="font-weight: bold">= {</span>loc_A<span style="font-weight: bold">: </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">([</span><span style="color: red">'Clean'</span><span style="font-weight: bold">, </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">]),
+         </span>loc_B<span style="font-weight: bold">: </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">([</span><span style="color: red">'Clean'</span><span style="font-weight: bold">, </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">])}
+
+    </span><span style="color: blue; font-weight: bold">def </span>thing_classes<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[</span>Wall<span style="font-weight: bold">,
+         </span>Dirt<span style="font-weight: bold">,
+         </span>ReflexVacuumAgent<span style="font-weight: bold">,
+         </span>RandomVacuumAgent<span style="font-weight: bold">,
+         </span>TableDrivenVacuumAgent<span style="font-weight: bold">,
+         </span>ModelBasedVacuumAgent<span style="font-weight: bold">]
+
+    </span><span style="color: blue; font-weight: bold">def </span>percept<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Returns the agent's location, and the location status (Dirty/Clean)."""
+        </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">(</span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>status<span style="font-weight: bold">[</span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">])
+
+    </span><span style="color: blue; font-weight: bold">def </span>execute_action<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>agent<span style="font-weight: bold">, </span>action<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Change agent's location and/or location's status; track performance.
+        Score 10 for each dirt cleaned; -1 for each move."""
+        </span><span style="color: blue; font-weight: bold">if </span>action <span style="font-weight: bold">== </span><span style="color: red">'Right'</span><span style="font-weight: bold">:
+            </span>agent<span style="font-weight: bold">.</span>location <span style="font-weight: bold">= </span>loc_B
+            agent<span style="font-weight: bold">.</span>performance <span style="font-weight: bold">-= </span><span style="color: red">1
+        </span><span style="color: blue; font-weight: bold">elif </span>action <span style="font-weight: bold">== </span><span style="color: red">'Left'</span><span style="font-weight: bold">:
+            </span>agent<span style="font-weight: bold">.</span>location <span style="font-weight: bold">= </span>loc_A
+            agent<span style="font-weight: bold">.</span>performance <span style="font-weight: bold">-= </span><span style="color: red">1
+        </span><span style="color: blue; font-weight: bold">elif </span>action <span style="font-weight: bold">== </span><span style="color: red">'Suck'</span><span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>status<span style="font-weight: bold">[</span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">] == </span><span style="color: red">'Dirty'</span><span style="font-weight: bold">:
+                </span>agent<span style="font-weight: bold">.</span>performance <span style="font-weight: bold">+= </span><span style="color: red">10
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>status<span style="font-weight: bold">[</span>agent<span style="font-weight: bold">.</span>location<span style="font-weight: bold">] = </span><span style="color: red">'Clean'
+
+    </span><span style="color: blue; font-weight: bold">def </span>default_location<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>thing<span style="font-weight: bold">):
+        </span><span style="color: darkred">"""Agents start in either location at random."""
+        </span><span style="color: blue; font-weight: bold">return </span>random<span style="font-weight: bold">.</span>choice<span style="font-weight: bold">([</span>loc_A<span style="font-weight: bold">, </span>loc_B<span style="font-weight: bold">])
+
+
+</span><span style="color: blue; font-weight: bold">def </span>compare_agents<span style="font-weight: bold">(</span>EnvFactory<span style="font-weight: bold">, </span>AgentFactories<span style="font-weight: bold">, </span>n <span style="font-weight: bold">= </span><span style="color: red">10</span><span style="font-weight: bold">, </span>steps <span style="font-weight: bold">= </span><span style="color: red">1000</span><span style="font-weight: bold">):
+    </span><span style="color: darkred">"""See how well each of several agents do in n instances of an environment.
+    Pass in a factory (constructor) for environments, and several for agents.
+    Create n instances of the environment, and run each agent in copies of
+    each one for steps. Return a list of (agent, average-score) tuples."""
+    </span>envs <span style="font-weight: bold">= [ </span>EnvFactory<span style="font-weight: bold">() </span><span style="color: blue; font-weight: bold">for </span>i <span style="color: blue; font-weight: bold">in </span>range<span style="font-weight: bold">(</span>n<span style="font-weight: bold">) ]
+    </span><span style="color: blue; font-weight: bold">return </span><span style="font-weight: bold">[ (</span>A<span style="font-weight: bold">, </span>test_agent<span style="font-weight: bold">(</span>A<span style="font-weight: bold">, </span>steps<span style="font-weight: bold">, </span>copy<span style="font-weight: bold">.</span>deepcopy<span style="font-weight: bold">(</span>envs<span style="font-weight: bold">))) </span><span style="color: blue; font-weight: bold">for </span>A <span style="color: blue; font-weight: bold">in </span>AgentFactories <span style="font-weight: bold">]
+
+
+</span><span style="color: blue; font-weight: bold">def </span>test_agent<span style="font-weight: bold">(</span>AgentFactory<span style="font-weight: bold">, </span>steps<span style="font-weight: bold">, </span>envs<span style="font-weight: bold">):
+    </span><span style="color: darkred">"""Return the mean score of running an agent in each of the envs, for steps"""
+
+    </span><span style="color: blue; font-weight: bold">def </span>score<span style="font-weight: bold">(</span>env<span style="font-weight: bold">):
+        </span>agent <span style="font-weight: bold">= </span>AgentFactory<span style="font-weight: bold">()
+        </span>env<span style="font-weight: bold">.</span>add_thing<span style="font-weight: bold">(</span>agent<span style="font-weight: bold">)
+        </span>env<span style="font-weight: bold">.</span>run<span style="font-weight: bold">(</span>steps<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">return </span>agent<span style="font-weight: bold">.</span>performance
+
+    <span style="color: blue; font-weight: bold">return </span>mean<span style="font-weight: bold">(</span>map<span style="font-weight: bold">(</span>score<span style="font-weight: bold">, </span>envs<span style="font-weight: bold">))
+
+
+</span>__doc__ <span style="font-weight: bold">+= </span><span style="color: red">"\n&gt;&gt;&gt; a = ReflexVacuumAgent()\n&gt;&gt;&gt; a.program((loc_A, 'Clean'))\n'Right'\n&gt;&gt;&gt; a.program((loc_B, 'Clean'))\n'Left'\n&gt;&gt;&gt; a.program((loc_A, 'Dirty'))\n'Suck'\n&gt;&gt;&gt; a.program((loc_A, 'Dirty'))\n'Suck'\n\n&gt;&gt;&gt; e = TrivialVacuumEnvironment()\n&gt;&gt;&gt; e.add_thing(ModelBasedVacuumAgent())\n&gt;&gt;&gt; e.run(5)\n\n## Environments, and some agents, are randomized, so the best we can\n## give is a range of expected scores.  If this test fails, it does\n## not necessarily mean something is wrong.\n&gt;&gt;&gt; envs = [TrivialVacuumEnvironment() for i in range(100)]\n&gt;&gt;&gt; def testv(A): return test_agent(A, 4, copy.deepcopy(envs))\n&gt;&gt;&gt; 7 &lt; testv(ModelBasedVacuumAgent) &lt; 11\nTrue\n&gt;&gt;&gt; 5 &lt; testv(ReflexVacuumAgent) &lt; 9\nTrue\n&gt;&gt;&gt; 2 &lt; testv(TableDrivenVacuumAgent) &lt; 6\nTrue\n&gt;&gt;&gt; 0.5 &lt; testv(RandomVacuumAgent) &lt; 3\nTrue\n"
+</span><span style="color: blue; font-weight: bold">import </span>Tkinter as tk
+
+<span style="color: blue; font-weight: bold">class </span>EnvGUI<span style="font-weight: bold">(</span>tk<span style="font-weight: bold">.</span>Tk<span style="font-weight: bold">, </span>object<span style="font-weight: bold">):
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>env<span style="font-weight: bold">, </span>title <span style="font-weight: bold">= </span><span style="color: red">'AIMA GUI'</span><span style="font-weight: bold">, </span>cellwidth <span style="font-weight: bold">= </span><span style="color: red">50</span><span style="font-weight: bold">, </span>n <span style="font-weight: bold">= </span><span style="color: red">10</span><span style="font-weight: bold">):
+        </span>super<span style="font-weight: bold">(</span>EnvGUI<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>__init__<span style="font-weight: bold">()
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>title<span style="font-weight: bold">(</span>title<span style="font-weight: bold">)
+        </span>canvas <span style="font-weight: bold">= </span>EnvCanvas<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>env<span style="font-weight: bold">, </span>cellwidth<span style="font-weight: bold">, </span>n<span style="font-weight: bold">)
+        </span>toolbar <span style="font-weight: bold">= </span>EnvToolbar<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>env<span style="font-weight: bold">, </span>canvas<span style="font-weight: bold">)
+        </span><span style="color: blue; font-weight: bold">for </span>w <span style="color: blue; font-weight: bold">in </span><span style="font-weight: bold">[</span>canvas<span style="font-weight: bold">, </span>toolbar<span style="font-weight: bold">]:
+            </span>w<span style="font-weight: bold">.</span>pack<span style="font-weight: bold">(</span>side<span style="font-weight: bold">=</span><span style="color: red">'bottom'</span><span style="font-weight: bold">, </span>fill<span style="font-weight: bold">=</span><span style="color: red">'x'</span><span style="font-weight: bold">, </span>padx<span style="font-weight: bold">=</span><span style="color: red">'3'</span><span style="font-weight: bold">, </span>pady<span style="font-weight: bold">=</span><span style="color: red">'3'</span><span style="font-weight: bold">)
+
+
+</span><span style="color: blue; font-weight: bold">class </span>EnvToolbar<span style="font-weight: bold">(</span>tk<span style="font-weight: bold">.</span>Frame<span style="font-weight: bold">, </span>object<span style="font-weight: bold">):
+
+    </span><span style="color: blue; font-weight: bold">def </span>__init__<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>parent<span style="font-weight: bold">, </span>env<span style="font-weight: bold">, </span>canvas<span style="font-weight: bold">):
+        </span>super<span style="font-weight: bold">(</span>EnvToolbar<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">).</span>__init__<span style="font-weight: bold">(</span>parent<span style="font-weight: bold">, </span>relief<span style="font-weight: bold">=</span><span style="color: red">'raised'</span><span style="font-weight: bold">, </span>bd<span style="font-weight: bold">=</span><span style="color: red">2</span><span style="font-weight: bold">)
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env <span style="font-weight: bold">= </span>env
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>canvas <span style="font-weight: bold">= </span>canvas
+        <span style="color: blue">self</span><span style="font-weight: bold">.</span>running <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>speed <span style="font-weight: bold">= </span><span style="color: red">1.0
+        </span><span style="color: blue; font-weight: bold">for </span>txt<span style="font-weight: bold">, </span>cmd <span style="color: blue; font-weight: bold">in </span><span style="font-weight: bold">[(</span><span style="color: red">'Step &gt;'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>step<span style="font-weight: bold">),
+         (</span><span style="color: red">'Run &gt;&gt;'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>run<span style="font-weight: bold">),
+         (</span><span style="color: red">'Stop [ ]'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>stop<span style="font-weight: bold">),
+         (</span><span style="color: red">'List things'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>list_things<span style="font-weight: bold">),
+         (</span><span style="color: red">'List agents'</span><span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>list_agents<span style="font-weight: bold">)]:
+            </span>tk<span style="font-weight: bold">.</span>Button<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>text<span style="font-weight: bold">=</span>txt<span style="font-weight: bold">, </span>command<span style="font-weight: bold">=</span>cmd<span style="font-weight: bold">).</span>pack<span style="font-weight: bold">(</span>side<span style="font-weight: bold">=</span><span style="color: red">'left'</span><span style="font-weight: bold">)
+
+        </span>tk<span style="font-weight: bold">.</span>Label<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>text<span style="font-weight: bold">=</span><span style="color: red">'Speed'</span><span style="font-weight: bold">).</span>pack<span style="font-weight: bold">(</span>side<span style="font-weight: bold">=</span><span style="color: red">'left'</span><span style="font-weight: bold">)
+        </span>scale <span style="font-weight: bold">= </span>tk<span style="font-weight: bold">.</span>Scale<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>orient<span style="font-weight: bold">=</span><span style="color: red">'h'</span><span style="font-weight: bold">, </span>from_<span style="font-weight: bold">=</span><span style="color: red">1.0</span><span style="font-weight: bold">, </span>to<span style="font-weight: bold">=</span><span style="color: red">10.0</span><span style="font-weight: bold">, </span>resolution<span style="font-weight: bold">=</span><span style="color: red">1.0</span><span style="font-weight: bold">, </span>command<span style="font-weight: bold">=</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>set_speed<span style="font-weight: bold">)
+        </span>scale<span style="font-weight: bold">.</span>set<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>speed<span style="font-weight: bold">)
+        </span>scale<span style="font-weight: bold">.</span>pack<span style="font-weight: bold">(</span>side<span style="font-weight: bold">=</span><span style="color: red">'left'</span><span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>run<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'run'
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>running <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">True
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>background_run<span style="font-weight: bold">()
+
+    </span><span style="color: blue; font-weight: bold">def </span>stop<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'stop'
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>running <span style="font-weight: bold">= </span><span style="color: blue; font-weight: bold">False
+
+    def </span>background_run<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">if </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>running<span style="font-weight: bold">:
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>step<span style="font-weight: bold">()
+            </span>delay_sec <span style="font-weight: bold">= </span><span style="color: red">1.0 </span><span style="font-weight: bold">/ </span>max<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">.</span>speed<span style="font-weight: bold">, </span><span style="color: red">1.0</span><span style="font-weight: bold">)
+            </span>ms <span style="font-weight: bold">= </span>int<span style="font-weight: bold">(</span><span style="color: red">1000.0 </span><span style="font-weight: bold">* </span>delay_sec<span style="font-weight: bold">)
+            </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>after<span style="font-weight: bold">(</span>ms<span style="font-weight: bold">, </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>background_run<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>list_things<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'Things in the environment:'
+        </span><span style="color: blue; font-weight: bold">for </span>thing <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>things<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'%s at %s' </span><span style="font-weight: bold">% (</span>thing<span style="font-weight: bold">, </span>thing<span style="font-weight: bold">.</span>location<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>list_agents<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">):
+        </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'Agents in the environment:'
+        </span><span style="color: blue; font-weight: bold">for </span>agt <span style="color: blue; font-weight: bold">in </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>env<span style="font-weight: bold">.</span>agents<span style="font-weight: bold">:
+            </span><span style="color: blue; font-weight: bold">print </span><span style="color: red">'%s at %s' </span><span style="font-weight: bold">% (</span>agt<span style="font-weight: bold">, </span>agt<span style="font-weight: bold">.</span>location<span style="font-weight: bold">)
+
+    </span><span style="color: blue; font-weight: bold">def </span>set_speed<span style="font-weight: bold">(</span><span style="color: blue">self</span><span style="font-weight: bold">, </span>speed<span style="font-weight: bold">):
+        </span><span style="color: blue">self</span><span style="font-weight: bold">.</span>speed <span style="font-weight: bold">= </span>float<span style="font-weight: bold">(</span>speed<span style="font-weight: bold">)
+</span>
+    </pre>
+    </body>
+    </html>
+    
