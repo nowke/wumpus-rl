@@ -112,7 +112,7 @@ def KB_AgentProgram(KB):
     steps = itertools.count()
 
     def program(percept):
-        t = steps.next()
+        t = next(steps)
         KB.tell(make_percept_sentence(percept, t))
         action = KB.ask(make_action_query(t))
         KB.tell(make_action_sentence(action, t))
@@ -181,7 +181,7 @@ class Expr:
         "Op is a string or number; args are Exprs (or are coerced to Exprs)."
         assert isinstance(op, str) or (isnumber(op) and not args)
         self.op = num_or_str(op)
-        self.args = map(expr, args) ## Coerce args to Exprs
+        self.args = list(map(expr, args)) ## Coerce args to Exprs
 
     def __call__(self, *args):
         """Self must be a symbol with no args, such as Expr('F').  Create a new
@@ -326,8 +326,8 @@ def parse_definite_clause(s):
         return conjuncts(antecedent), consequent
 
 ## Useful constant Exprs used in examples and code:
-TRUE, FALSE, ZERO, ONE, TWO = map(Expr, ['TRUE', 'FALSE', 0, 1, 2])
-A, B, C, F, G, P, Q, x, y, z  = map(Expr, 'ABCFGPQxyz')
+TRUE, FALSE, ZERO, ONE, TWO = list(map(Expr, ['TRUE', 'FALSE', 0, 1, 2]))
+A, B, C, F, G, P, Q, x, y, z  = list(map(Expr, 'ABCFGPQxyz'))
 
 #______________________________________________________________________________
 
@@ -416,7 +416,7 @@ def pl_true(exp, model={}):
     elif op == '^':
         return pt != qt
     else:
-        raise ValueError, "illegal operator in logic expression" + str(exp)
+        raise ValueError("illegal operator in logic expression" + str(exp))
 
 #______________________________________________________________________________
 
@@ -450,7 +450,7 @@ def eliminate_implications(s):
     ((A & ~B) | (~A & B))
     """
     if not s.args or is_symbol(s.op): return s     ## (Atoms are unchanged.)
-    args = map(eliminate_implications, s.args)
+    args = list(map(eliminate_implications, s.args))
     a, b = args[0], args[-1]
     if s.op == '>>':
         return (b | ~a)
@@ -478,13 +478,13 @@ def move_not_inwards(s):
         NOT = lambda b: move_not_inwards(~b)
         a = s.args[0]
         if a.op == '~': return move_not_inwards(a.args[0]) # ~~A ==> A
-        if a.op =='&': return associate('|', map(NOT, a.args))
-        if a.op =='|': return associate('&', map(NOT, a.args))
+        if a.op =='&': return associate('|', list(map(NOT, a.args)))
+        if a.op =='|': return associate('&', list(map(NOT, a.args)))
         return s
     elif is_symbol(s.op) or not s.args:
         return s
     else:
-        return Expr(s.op, *map(move_not_inwards, s.args))
+        return Expr(s.op, *list(map(move_not_inwards, s.args)))
 
 def distribute_and_over_or(s):
     """Given a sentence s consisting of conjunctions and disjunctions
@@ -508,7 +508,7 @@ def distribute_and_over_or(s):
         return associate('&', [distribute_and_over_or(c|rest)
                                for c in conj.args])
     elif s.op == '&':
-        return associate('&', map(distribute_and_over_or, s.args))
+        return associate('&', list(map(distribute_and_over_or, s.args)))
     else:
         return s
 
@@ -569,23 +569,23 @@ def pl_resolution(KB, alpha):
     while True:
         n = len(clauses)
 
-        print 'num_clauses:', n
+        print('num_clauses:', n)
 
         pairs = [(clauses[i], clauses[j])
                  for i in range(n) for j in range(i+1, n)]
 
-        print 'pairs:', len(pairs)
+        print('pairs:', len(pairs))
 
         pairs_count = 0
         for (ci, cj) in pairs:
             pairs_count += 1
-            if pairs_count % 10000 == 0: print '   ', pairs_count
+            if pairs_count % 10000 == 0: print('   ', pairs_count)
             resolvents = pl_resolve(ci, cj)
             if FALSE in resolvents: return True
             new = new.union(set(resolvents))
         if new.issubset(set(clauses)): return False
 
-        print 'new:', len(new)
+        print('new:', len(new))
         
         for c in new:
             if c not in clauses: clauses.append(c)
@@ -676,8 +676,8 @@ def dpll_satisfiable(s):
     clauses = conjuncts(to_cnf(s))
     symbols = prop_symbols(s)
 
-    print '  >>> Got clauses (',len(clauses),') and symbols (', len(symbols), ')'
-    print '  >>> starting dpll proper'
+    print('  >>> Got clauses (',len(clauses),') and symbols (', len(symbols), ')')
+    print('  >>> starting dpll proper')
     
     return dpll(clauses, symbols, {})
 
@@ -913,7 +913,7 @@ def standardize_variables(sentence, dic=None):
         if sentence in dic:
             return dic[sentence]
         else:
-            v = Expr('v_%d' % standardize_variables.counter.next())
+            v = Expr('v_%d' % next(standardize_variables.counter))
             dic[sentence] = v
             return v
     else:
@@ -959,12 +959,12 @@ def test_ask(query, kb=None):
     q = expr(query)
     vars = variables(q)
     answers = fol_bc_ask(kb or test_kb, q)
-    return sorted([pretty(dict((x, v) for x, v in a.items() if x in vars))
+    return sorted([pretty(dict((x, v) for x, v in list(a.items()) if x in vars))
                    for a in answers],
                   key=repr)
 
 test_kb = FolKB(
-    map(expr, ['Farmer(Mac)',
+    list(map(expr, ['Farmer(Mac)',
                'Rabbit(Pete)',
                'Mother(MrsMac, Mac)',
                'Mother(MrsRabbit, Pete)',
@@ -976,11 +976,11 @@ test_kb = FolKB(
                # would result in infinite recursion:
                #'(Human(h) & Mother(m, h)) ==> Human(m)'
                '(Mother(m, h) & Human(h)) ==> Human(m)'
-               ])
+               ]))
 )
 
 crime_kb = FolKB(
-  map(expr,
+  list(map(expr,
     ['(American(x) & Weapon(y) & Sells(x, y, z) & Hostile(z)) ==> Criminal(x)',
      'Owns(Nono, M1)',
      'Missile(M1)',
@@ -989,7 +989,7 @@ crime_kb = FolKB(
      'Enemy(x, America) ==> Hostile(x)',
      'American(West)',
      'Enemy(Nono, America)'
-     ])
+     ]))
 )
 
 def fol_bc_ask(KB, query):
@@ -1059,7 +1059,7 @@ def diff(y, x):
 
 def simp(x):
     if not x.args: return x
-    args = map(simp, x.args)
+    args = list(map(simp, x.args))
     u, op, v = args[0], x.op, args[-1]
     if op == '+':
         if v == ZERO: return u
@@ -1118,7 +1118,7 @@ def pretty_dict(d):
     '{x: A, y: B, z: C}'
     """
     return '{%s}' % ', '.join('%r: %r' % (k, v)
-                              for k, v in sorted(d.items(), key=repr))
+                              for k, v in sorted(list(d.items()), key=repr))
 
 def pretty_set(s):
     """Return set s's repr but with the items sorted.
@@ -1130,17 +1130,17 @@ def pretty_set(s):
     return 'set(%r)' % sorted(s, key=repr)
 
 def pp(x):
-    print pretty(x)
+    print(pretty(x))
 
 def ppsubst(s):
     """Pretty-print substitution s"""
     ppdict(s)
 
 def ppdict(d):
-    print pretty_dict(d)
+    print(pretty_dict(d))
 
 def ppset(s):
-    print pretty_set(s)
+    print(pretty_set(s))
 
 #________________________________________________________________________
 # CTM: misc. helpers to extend the interface

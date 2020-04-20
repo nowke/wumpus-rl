@@ -128,10 +128,7 @@ class PlanRouteProblem(search.Problem):
         "*** YOUR CODE HERE ***"
         # From `node` to every `goal` in `goals`, we calculate
         # the manhattan distance with heading, and return the minimum
-        distances = list(map(
-            lambda goal: manhattan_distance_with_heading(node.state, goal),
-            self.goals
-        )) + [float("inf")]
+        distances = list([manhattan_distance_with_heading(node.state, goal) for goal in self.goals]) + [float("inf")]
         return min(distances)
 
     def actions(self, state):

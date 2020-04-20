@@ -97,7 +97,7 @@ class WumpusWorldScenario(object):
         if not layout:
             raise Exception("Could not find layout file: {0}".format(layout_file))
 
-        print "Loaded layout '{0}'".format(layout_file)
+        print("Loaded layout '{0}'".format(layout_file))
 
         objects = []
         entrance = (1,1) # default entrance location
@@ -132,15 +132,15 @@ class WumpusWorldScenario(object):
 
     def step(self):
         self.env.step()
-        print
-        print "Current Wumpus Environment:"
-        print self.env.to_string()
+        print()
+        print("Current Wumpus Environment:")
+        print(self.env.to_string())
 
     def run(self, steps = 1000):
-        print self.env.to_string()
+        print(self.env.to_string())
         for step in range(steps):
             if self.env.is_done():
-                print "DONE."
+                print("DONE.")
                 slist = []
                 if len(self.env.agents) > 0:
                     slist += ['Final Scores:']
@@ -148,12 +148,12 @@ class WumpusWorldScenario(object):
                     slist.append(' {0}={1}'.format(agent, agent.performance_measure))
                     if agent.verbose:
                         if hasattr(agent, 'number_of_clauses_over_epochs'):
-                            print "number_of_clauses_over_epochs:" \
-                                  +" {0}".format(agent.number_of_clauses_over_epochs)
+                            print("number_of_clauses_over_epochs:" \
+                                  +" {0}".format(agent.number_of_clauses_over_epochs))
                         if hasattr(agent, 'belief_loc_query_times'):
-                            print "belief_loc_query_times:" \
-                                  +" {0}".format(agent.belief_loc_query_times)
-                print ''.join(slist)
+                            print("belief_loc_query_times:" \
+                                  +" {0}".format(agent.belief_loc_query_times))
+                print(''.join(slist))
                 return
             self.step()
 
@@ -164,8 +164,8 @@ class WumpusWorldScenario(object):
         return s
 
     def pprint(self):
-        print self.to_string()
-        print self.env.to_string()
+        print(self.to_string())
+        print(self.env.to_string())
 
 
 
@@ -272,35 +272,35 @@ def with_manual_program(agent):
     actions  = ['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Climb', 'Shoot', 'Wait']
 
     def show_commands():
-        print "   The following are valid Hunt The Wumpus action:"
-        print "     {0}".format(', '.join(map(lambda a: '\'{0}\''.format(a), actions)))
-        print "   Enter {0} to get this command info" \
-              .format(' or '.join(map(lambda a: '\'{0}\''.format(a), helping)))
-        print "   Enter {0} to stop playing" \
-              .format(' or '.join(map(lambda a: '\'{0}\''.format(a), stopping)))
-        print "   Enter 'env' to display current wumpus environment"
+        print("   The following are valid Hunt The Wumpus action:")
+        print("     {0}".format(', '.join(['\'{0}\''.format(a) for a in actions])))
+        print("   Enter {0} to get this command info" \
+              .format(' or '.join(['\'{0}\''.format(a) for a in helping])))
+        print("   Enter {0} to stop playing" \
+              .format(' or '.join(['\'{0}\''.format(a) for a in stopping])))
+        print("   Enter 'env' to display current wumpus environment")
 
     def manual_program(percept):
-        print "[{0}] You perceive: {1}".format(agent.time,agent.pretty_percept_vector(percept))
+        print("[{0}] You perceive: {1}".format(agent.time,agent.pretty_percept_vector(percept)))
         action = None
         while not action:
-            val = raw_input("Enter Action ('?' for list of commands): ")
+            val = input("Enter Action ('?' for list of commands): ")
             val = val.strip()
             if val in helping:
-                print
+                print()
                 show_commands()
-                print
+                print()
             elif val in stopping:
                 action = 'Stop'
             elif val == 'env':
-                print
-                print "Current wumpus environment:"
-                print agent.env.to_string()
+                print()
+                print("Current wumpus environment:")
+                print(agent.env.to_string())
             elif val in actions:
                 action = val
             else:
-                print "'{0}' is an invalid command;".format(val) \
-                      + " try again (enter '?' for list of commands)"
+                print("'{0}' is an invalid command;".format(val) \
+                      + " try again (enter '?' for list of commands)")
         agent.time += 1
         return action
 
@@ -334,39 +334,39 @@ def with_manual_kb_program(agent):
                 + '           (can be time consuming!)')]
 
     def show_commands():
-        print "Available Commands:"
-        print "   The following are valid Hunt The Wumpus actions:"
-        print "     {0}".format(', '.join(map(lambda a: '\'{0}\''.format(a), actions)))
-        print "   Enter {0} to get this command info" \
-              .format(' or '.join(map(lambda a: '\'{0}\''.format(a), helping)))
-        print "   Enter {0} to stop playing" \
-              .format(' or '.join(map(lambda a: '\'{0}\''.format(a), stopping)))
-        print "   Enter 'env' to display current wumpus environment"
-        print "   Enter 'kbsat' to check if the agent's KB is satisfiable"
-        print "      If the KB is NOT satisfiable, then there's a contradiction that needs fixing."
-        print "      NOTE: A satisfiable KB does not mean there aren't other problems."
-        print "   Enter 'save-axioms' to save all of the KB axioms to 'kb-axioms.txt'"
-        print "      This will overwrite any existing 'kb-axioms.txt'"
-        print "   Enter 'save-clauses' to save all of the KB clauses to text file 'kb-clauses.txt'"
-        print "      This will overwrite any existing 'kb-clauses.txt'"
-        print "   Enter 'props' to list all of the proposition bases"
-        print "   Queries:"
+        print("Available Commands:")
+        print("   The following are valid Hunt The Wumpus actions:")
+        print("     {0}".format(', '.join(['\'{0}\''.format(a) for a in actions])))
+        print("   Enter {0} to get this command info" \
+              .format(' or '.join(['\'{0}\''.format(a) for a in helping])))
+        print("   Enter {0} to stop playing" \
+              .format(' or '.join(['\'{0}\''.format(a) for a in stopping])))
+        print("   Enter 'env' to display current wumpus environment")
+        print("   Enter 'kbsat' to check if the agent's KB is satisfiable")
+        print("      If the KB is NOT satisfiable, then there's a contradiction that needs fixing.")
+        print("      NOTE: A satisfiable KB does not mean there aren't other problems.")
+        print("   Enter 'save-axioms' to save all of the KB axioms to 'kb-axioms.txt'")
+        print("      This will overwrite any existing 'kb-axioms.txt'")
+        print("   Enter 'save-clauses' to save all of the KB clauses to text file 'kb-clauses.txt'")
+        print("      This will overwrite any existing 'kb-clauses.txt'")
+        print("   Enter 'props' to list all of the proposition bases")
+        print("   Queries:")
         for query,desc in queries:
-            print "      {0} : {1}".format(query,desc)
+            print("      {0} : {1}".format(query,desc))
 
     def show_propositions():
-        print "Proposition Bases:"
-        print "   Atemporal location-based propositions (include x,y index: P<x>_<y>)"
-        print "     '" + '\', \''.join(proposition_bases_atemporal_location) + '\''
-        print "   Perceptual propositions (include time index: P<t>)"
-        print "     '" + '\', \''.join(proposition_bases_perceptual_fluents) + '\''
-        print "   Location fluent propositions (include x,y and time index: P<x>_<y>_<t>)"
-        print "     '" + '\', \''.join(proposition_bases_location_fluents) + '\''
-        print "   State fluent propositions (include time index: P<t>)"
-        print "     '" + '\', \''.join(proposition_bases_state_fluents[:4]) + '\','
-        print "     '" + '\', \''.join(proposition_bases_state_fluents[4:]) + '\''
-        print "   Action propositions (include time index: P<t>)"
-        print "     '" + '\', \''.join(proposition_bases_actions) + '\''
+        print("Proposition Bases:")
+        print("   Atemporal location-based propositions (include x,y index: P<x>_<y>)")
+        print("     '" + '\', \''.join(proposition_bases_atemporal_location) + '\'')
+        print("   Perceptual propositions (include time index: P<t>)")
+        print("     '" + '\', \''.join(proposition_bases_perceptual_fluents) + '\'')
+        print("   Location fluent propositions (include x,y and time index: P<x>_<y>_<t>)")
+        print("     '" + '\', \''.join(proposition_bases_location_fluents) + '\'')
+        print("   State fluent propositions (include time index: P<t>)")
+        print("     '" + '\', \''.join(proposition_bases_state_fluents[:4]) + '\',')
+        print("     '" + '\', \''.join(proposition_bases_state_fluents[4:]) + '\'')
+        print("   Action propositions (include time index: P<t>)")
+        print("     '" + '\', \''.join(proposition_bases_actions) + '\'')
 
     def write_list_to_text_file(filename,list):
         outfile = file(filename, 'w')
@@ -382,9 +382,9 @@ def with_manual_kb_program(agent):
         """
         result = minisat(agent.kb.clauses)
         if result:
-            print "Agent KB is satisfiable"
+            print("Agent KB is satisfiable")
         else:
-            print "Agent KB is NOT satisfiable!!  There is contradiction that needs fixing!"
+            print("Agent KB is NOT satisfiable!!  There is contradiction that needs fixing!")
 
     def simple_query(proposition):
         """
@@ -392,9 +392,9 @@ def with_manual_kb_program(agent):
         """
         result = agent.kb.ask(expr(proposition))
         if result == None:
-            print "{0}: Unknown!".format(proposition)
+            print("{0}: Unknown!".format(proposition))
         else:
-            print "{0}: {1}".format(proposition,result)
+            print("{0}: {1}".format(proposition,result))
 
     def location_based_query(proposition_base):
         """
@@ -409,7 +409,7 @@ def with_manual_kb_program(agent):
         """
         display_env = WumpusEnvironment(agent.width, agent.height)
         start_time = clock()
-        print "Running queries for: {0}<x>_<y>".format(proposition_base)
+        print("Running queries for: {0}<x>_<y>".format(proposition_base))
         for x in range(1,agent.width+1):
             for y in range(1,agent.height+1):
                 query = expr('{0}{1}_{2}'.format(proposition_base,x,y))
@@ -419,10 +419,10 @@ def with_manual_kb_program(agent):
                 else:
                     display_env.add_thing(Proposition(query,result),(x,y))
         end_time = clock()
-        print "          >>> time elapsed while making queries:" \
-              + " {0}".format(end_time-start_time)
-        print display_env.to_string(agent.time,
-                                    title="All {0}<x>_<y> queries".format(proposition_base))
+        print("          >>> time elapsed while making queries:" \
+              + " {0}".format(end_time-start_time))
+        print(display_env.to_string(agent.time,
+                                    title="All {0}<x>_<y> queries".format(proposition_base)))
 
     def location_time_based_query(proposition_base, time):
         """
@@ -437,7 +437,7 @@ def with_manual_kb_program(agent):
         """
         display_env = WumpusEnvironment(agent.width, agent.height)
         start_time = clock()
-        print "Running queries for: {0}<x>_<y>_{1}".format(proposition_base,time)
+        print("Running queries for: {0}<x>_<y>_{1}".format(proposition_base,time))
         for x in range(1,agent.width+1):
             for y in range(1,agent.height+1):
                 query = expr('{0}{1}_{2}_{3}'.format(proposition_base,x,y,time))
@@ -447,11 +447,11 @@ def with_manual_kb_program(agent):
                 else:
                     display_env.add_thing(Proposition(query,result),(x,y))
         end_time = clock()
-        print "          >>> time elapsed while making queries:" \
-              + " {0}".format(end_time-start_time)
-        print display_env.to_string(agent.time,
+        print("          >>> time elapsed while making queries:" \
+              + " {0}".format(end_time-start_time))
+        print(display_env.to_string(agent.time,
                                     title="All {0}<x>_<y>_{1} queries".format(proposition_base,
-                                                                              time))
+                                                                              time)))
 
     def run_all_queries(time):
         check_kb_status()
@@ -472,92 +472,92 @@ def with_manual_kb_program(agent):
                 simple_query(p + '{0}'.format(t))
         '''
         if time-1 > 0:
-            print "Actions from previous time: {0}".format(time-1)
+            print("Actions from previous time: {0}".format(time-1))
             for p in proposition_bases_actions:
                 simple_query(p + '{0}'.format(time-1))
             
-        print "FINISHED running all queries for time {0}".format(time)
+        print("FINISHED running all queries for time {0}".format(time))
 
     def manual_kb_program(percept):
 
-        print "------------------------------------------------------------------"
-        print "At time {0}".format(agent.time)
+        print("------------------------------------------------------------------")
+        print("At time {0}".format(agent.time))
         
         percept_sentence = agent.make_percept_sentence(percept)
-        print "     HWA.agent_program(): kb.tell(percept_sentence):"
-        print "         {0}".format(percept_sentence)
+        print("     HWA.agent_program(): kb.tell(percept_sentence):")
+        print("         {0}".format(percept_sentence))
         agent.kb.tell(percept_sentence)  # update the agent's KB based on percepts
 
         # update current location and heading based on current KB knowledge state
-        print "     HWA.infer_and_set_belief_location()"
+        print("     HWA.infer_and_set_belief_location()")
         agent.infer_and_set_belief_location()
-        print "     HWA.infer_and_set_belief_heading()"
+        print("     HWA.infer_and_set_belief_heading()")
         agent.infer_and_set_belief_heading()
 
         clauses_before = len(agent.kb.clauses)
-        print "     HWA.agent_program(): Prepare to add temporal axioms"
-        print "         Number of clauses in KB before: {0}".format(clauses_before)
+        print("     HWA.agent_program(): Prepare to add temporal axioms")
+        print("         Number of clauses in KB before: {0}".format(clauses_before))
         agent.add_temporal_axioms()
         clauses_after = len(agent.kb.clauses)
-        print "         Number of clauses in KB after: {0}".format(clauses_after)
-        print "         Total clauses added to KB: {0}".format(clauses_after - clauses_before)
+        print("         Number of clauses in KB after: {0}".format(clauses_after))
+        print("         Total clauses added to KB: {0}".format(clauses_after - clauses_before))
         agent.number_of_clauses_over_epochs.append(len(agent.kb.clauses))
 
         action = None
         while not action:
-            print "[{0}] You perceive: {1}".format(agent.time,
-                                                   agent.pretty_percept_vector(percept))
-            val = raw_input("Enter Action ('?' for list of commands): ")
+            print("[{0}] You perceive: {1}".format(agent.time,
+                                                   agent.pretty_percept_vector(percept)))
+            val = input("Enter Action ('?' for list of commands): ")
             val = val.strip()
             if val in helping:
-                print
+                print()
                 show_commands()
-                print
+                print()
             elif val in stopping:
                 action = 'Stop'
             elif val in actions:
                 action = val
             elif val == 'env':
-                print
-                print "Current wumpus environment:"
-                print agent.env.to_string()
+                print()
+                print("Current wumpus environment:")
+                print(agent.env.to_string())
             elif val == 'props':
-                print
+                print()
                 show_propositions()
-                print
+                print()
             elif val == 'kbsat':
                 check_kb_status()
-                print
+                print()
             elif val == 'save-axioms':
                 write_list_to_text_file('kb-axioms.txt',agent.kb.axioms)
-                print "   Saved to 'kb-axioms.txt'"
-                print
+                print("   Saved to 'kb-axioms.txt'")
+                print()
             elif val == 'save-clauses':
                 write_list_to_text_file('kb-clauses.txt',agent.kb.clauses)
-                print "   Saved to 'kb-clauses.txt'"
-                print
+                print("   Saved to 'kb-clauses.txt'")
+                print()
             else:
                 q = val.split(' ')
                 if len(q) == 2 and q[0] == 'qp':
                     simple_query(q[1])
-                    print
+                    print()
                 elif len(q) == 2 and q[0] == 'qpl':
                     location_based_query(q[1])
-                    print
+                    print()
                 elif len(q) == 3 and q[0] == 'qplt':
                     location_time_based_query(q[1],q[2])
-                    print
+                    print()
                 elif q[0] == 'q!':
                     if len(q) == 2:
                         t = int(q[1])
                         run_all_queries(t)
                     else:
                         run_all_queries(agent.time)
-                    print
+                    print()
                 else:
-                    print "'{0}' is an invalid command;".format(val) \
-                          + " try again (enter '?' for list of commands)"
-                    print
+                    print("'{0}' is an invalid command;".format(val) \
+                          + " try again (enter '?' for list of commands)")
+                    print()
 
         # update KB with selected action
         agent.kb.tell(add_time_stamp(action, agent.time))
@@ -584,30 +584,30 @@ def run_minisat_test():
                ("(P | R) <=> (~(Q | R) & (R >> ~(S <=> T)))", True) # SAT
                ]
     
-    print "Running simple MiniSat test:"
+    print("Running simple MiniSat test:")
     t = 1
     failed = []
     for query, expected_result in queries:
-        print "-----------------------------------------------------"
-        print "Test {0}".format(t)
-        print "  Query:      '{0}'".format(query)
+        print("-----------------------------------------------------")
+        print("Test {0}".format(t))
+        print("  Query:      '{0}'".format(query))
         query = logic.conjuncts(logic.to_cnf(logic.expr(query)))
         result = minisat(query, None, variable=None, value=True, verbose=False)
-        print "  Query CNF:  {0}".format(query)
-        print "  Result:     {0}   (Expected: {1})".format(result.success, expected_result)
+        print("  Query CNF:  {0}".format(query))
+        print("  Result:     {0}   (Expected: {1})".format(result.success, expected_result))
         if result.success != expected_result:
-            print "    FAILURE: unexpected result."
+            print("    FAILURE: unexpected result.")
             failed.append(t)
         if result.success:
-            print "  Variable Assignment: {0}".format(result.varmap)
+            print("  Variable Assignment: {0}".format(result.varmap))
         t += 1
-    print "-----------------------------------------------------"
+    print("-----------------------------------------------------")
     if not failed:
-        print "Successfully passed {0} tests.".format(len(queries))
+        print("Successfully passed {0} tests.".format(len(queries)))
     else:
-        print "Passed {0} test(s).".format(len(queries) - len(failed))
-        print "The following tests failed: {0}".format(failure)
-    print "DONE."
+        print("Passed {0} test(s).".format(len(queries) - len(failed)))
+        print("The following tests failed: {0}".format(failure))
+    print("DONE.")
 
 #-------------------------------------------------------------------------------
 # Command-line interface

@@ -157,13 +157,10 @@ def axiom_generator_percept_sentence(t, tvec):
     # Comment or delete the next line once this function has been implemented.
 
     # Convert to [(Stench, False), (Breeze, True), ...]
-    axiom_percepts = zip(proposition_bases_perceptual_fluents, tvec)
+    axiom_percepts = list(zip(proposition_bases_perceptual_fluents, tvec))
 
     # Convert to ['~Stench0', 'Breeze0', ...]
-    axiom_percepts_repr = map(
-        lambda x: '{0}{1}'.format(x[0], str(t)) if x[1] else '~{0}{1}'.format(x[0], str(t)),
-        axiom_percepts
-    )
+    axiom_percepts_repr = ['{0}{1}'.format(x[0], str(t)) if x[1] else '~{0}{1}'.format(x[0], str(t)) for x in axiom_percepts]
 
     # Build the final string
     axiom_str = ' & '.join(axiom_percepts_repr)
@@ -304,13 +301,10 @@ def axiom_generator_at_most_one_wumpus(xmin, xmax, ymin, ymax):
 
     # Convert to the format:
     #   ['(~W1_1 | ~W1_2)', '(~W1_1 | ~W1_3)', ...]
-    wumpus_axiom_pairs = map(
-        lambda x: "(~{0} | ~{1})".format(
+    wumpus_axiom_pairs = ["(~{0} | ~{1})".format(
             wumpus_str(x[0][0], x[0][1]),
             wumpus_str(x[1][0], x[1][1]),
-        ),
-        all_pairs
-    )
+        ) for x in all_pairs]
     
     # Join all wumpus axions with AND
     #  - '(~W1_1 | ~W1_2) & (~W1_1 | ~W1_3) & ...'
@@ -365,10 +359,7 @@ def axiom_generator_only_one_heading(heading = 'north', t = 0):
         ('south', state_heading_south_str),
         ('west', state_heading_west_str)
     ]
-    directions_str = map(
-        lambda x: "~{0}".format(x[1](t)) if x[0] != heading else x[1](t),
-        directions_fns
-    )
+    directions_str = ["~{0}".format(x[1](t)) if x[0] != heading else x[1](t) for x in directions_fns]
 
     # Final format - join by '&'
     # - 'HeadingNorth0 & ~HeadingSouth0 & ~HeadingEast0 & ~HeadingWest0'
@@ -454,7 +445,7 @@ def generate_square_OK_axioms(t, xmin, xmax, ymin, ymax):
             axioms.append(axiom_generator_location_OK(x, y, t))
     if utils.all_empty_strings(axioms):
         utils.print_not_implemented('axiom_generator_location_OK')
-    return filter(lambda s: s != '', axioms)
+    return [s for s in axioms if s != '']
 
 
 #-------------------------------------------------------------------------------
@@ -487,7 +478,7 @@ def generate_breeze_percept_and_location_axioms(t, xmin, xmax, ymin, ymax):
             axioms.append(axiom_generator_breeze_percept_and_location_property(x, y, t))
     if utils.all_empty_strings(axioms):
         utils.print_not_implemented('axiom_generator_breeze_percept_and_location_property')
-    return filter(lambda s: s != '', axioms)
+    return [s for s in axioms if s != '']
 
 def axiom_generator_stench_percept_and_location_property(x, y, t):
     """
@@ -515,7 +506,7 @@ def generate_stench_percept_and_location_axioms(t, xmin, xmax, ymin, ymax):
             axioms.append(axiom_generator_stench_percept_and_location_property(x, y, t))
     if utils.all_empty_strings(axioms):
         utils.print_not_implemented('axiom_generator_stench_percept_and_location_property')
-    return filter(lambda s: s != '', axioms)
+    return [s for s in axioms if s != '']
 
 
 #-------------------------------------------------------------------------------
@@ -636,7 +627,7 @@ def generate_at_location_ssa(t, x, y, xmin, xmax, ymin, ymax, heading):
         axioms.append(axiom_generator_at_location_ssa(t, x, y+1, xmin, xmax, ymin, ymax))
     if utils.all_empty_strings(axioms):
         utils.print_not_implemented('axiom_generator_at_location_ssa')
-    return filter(lambda s: s != '', axioms)
+    return [s for s in axioms if s != '']
 
 #----------------------------------
 
@@ -807,7 +798,7 @@ def generate_non_location_ssa(t):
     axioms.append(axiom_generator_have_arrow_ssa(t))
     axioms.append(axiom_generator_wumpus_alive_ssa(t))
     axioms.extend(generate_heading_ssa(t))
-    return filter(lambda s: s != '', axioms)
+    return [s for s in axioms if s != '']
 
 #----------------------------------
 
@@ -937,10 +928,7 @@ def axiom_generator_only_one_action_axioms(t):
 
     # Convert to the format:
     #   ['(~Grab0 | ~Shoot0)', '(~Grab0 | ~Climb0)', ...]
-    action_axiom_pairs = map(
-        lambda x: "(~{0} | ~{1})".format(x[0], x[1]),
-        all_pairs
-    )
+    action_axiom_pairs = ["(~{0} | ~{1})".format(x[0], x[1]) for x in all_pairs]
     
     # Join all action axioms with AND
     #  - '(~Grab0 | ~Shoot0) & (~Grab0 | ~Climb0) & ...'
@@ -963,6 +951,6 @@ def generate_mutually_exclusive_axioms(t):
     # actions occur in current time, after percept
     axioms.append(axiom_generator_only_one_action_axioms(t))
 
-    return filter(lambda s: s != '', axioms)
+    return [s for s in axioms if s != '']
 
 #-------------------------------------------------------------------------------

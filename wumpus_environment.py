@@ -77,7 +77,7 @@ class Explorer(agents.Agent):
 
     def register_environment(self, environment):
         if self.verbose:
-            print "{0}.register_environment()".format(self.__class__.__name__)
+            print("{0}.register_environment()".format(self.__class__.__name__))
         # NOTE: agent.location is the true, environment-registered location
         #       agent.location is also set by env.add_thing(agent)
         self.location = environment.entrance
@@ -94,15 +94,15 @@ class Explorer(agents.Agent):
         NOTE: Eventually move belief_locaiton and belief_heading to a knowledge-based agent.
         """
         if self.verbose:
-            print "{0}.reset()".format(self.__class__.__name__)
+            print("{0}.reset()".format(self.__class__.__name__))
         if hasattr(self,'initial_location'):
             # self.location is the true agent location in the environment
             self.location = self.initial_location
             # self.belief_locataion is location the agent believes it is in
             self.belief_location = self.initial_location
         else:
-            print "{0}.reset(): agent has no initial_location;".format(self.__class__.__name__)
-            print "     Need to first call Explorer.register_environment(env)"
+            print("{0}.reset(): agent has no initial_location;".format(self.__class__.__name__))
+            print("     Need to first call Explorer.register_environment(env)")
         # self.heading is the true agent heading in the environment
         self.heading = self.initial_heading
         # self.belief_heading is the heading the agent believes it has
@@ -118,17 +118,17 @@ class Explorer(agents.Agent):
             if 0 <= heading <= 3:
                 return self.heading_num_to_str[heading]
             else:
-                print "Not a valid heading int (0 <= heading <= 3), got: {0}".format(heading)
+                print("Not a valid heading int (0 <= heading <= 3), got: {0}".format(heading))
                 sys.exit(0)
         elif isinstance(heading,str):
-            headings = self.heading_str_to_num.keys()
+            headings = list(self.heading_str_to_num.keys())
             if heading in headings:
                 return heading
             else:
-                print "Not a valid heading str (one of {0}), got: {1}".format(headings,heading)
+                print("Not a valid heading str (one of {0}), got: {1}".format(headings,heading))
                 sys.exit(0)
         else:
-            print "Not a valid heading:", heading
+            print("Not a valid heading:", heading)
             sys.exit(0)
 
     def heading_int(self, heading):
@@ -139,17 +139,17 @@ class Explorer(agents.Agent):
             if 0 <= heading <= 3:
                 return heading
             else:
-                print "Not a valid heading int (0 <= heading <= 3), got: {0}".format(heading)
+                print("Not a valid heading int (0 <= heading <= 3), got: {0}".format(heading))
                 sys.exit(0)
         elif isinstance(heading,str):
-            headings = self.heading_str_to_num.keys()
+            headings = list(self.heading_str_to_num.keys())
             if heading in headings:
                 return self.heading_str_to_num[heading]
             else:
-                print "Not a valid heading str (one of {0}), got: {1}".format(headings,heading)
+                print("Not a valid heading str (one of {0}), got: {1}".format(headings,heading))
                 sys.exit(0)
         else:
-            print "Not a valid heading:", heading
+            print("Not a valid heading:", heading)
             sys.exit(0)
 
     def to_string(self):
@@ -219,9 +219,9 @@ def TraceAgent(agent):
 
     def new_program(percept):
         action = old_program(percept)
-        print '%s perceives %s and does %s' % (agent,
+        print('%s perceives %s and does %s' % (agent,
                                                agent.pretty_percept_vector(percept),
-                                               action)
+                                               action))
         return action
 
     agent.program = new_program
@@ -256,11 +256,11 @@ class WumpusEnvironment(agents.XYEnvironment):
                                                                   tclass=Wumpus) ]
             colocated_pit = self.list_things_at(agent.location, tclass=Pit)
             if any(colocated_wumpi):
-                print 'A Wumpus ate {0}!'.format(agent)
+                print('A Wumpus ate {0}!'.format(agent))
                 agent.performance_measure -= 1000
                 self.done = True
             elif colocated_pit:
-                print '{0} fell into a bottomless pit!'.format(agent)
+                print('{0} fell into a bottomless pit!'.format(agent))
                 agent.performance_measure -= 1000
                 self.done = True
 
@@ -324,9 +324,9 @@ class WumpusEnvironment(agents.XYEnvironment):
                     agent.has_gold = True
                     self.delete_thing(gold)
                 except:
-                    print "Error: Gold should be here, but couldn't find it!"
-                    print 'All things:', self.list_things_at(agent.location)
-                    print 'Gold?:', self.list_things_at(agent.location, tclass=Gold)
+                    print("Error: Gold should be here, but couldn't find it!")
+                    print('All things:', self.list_things_at(agent.location))
+                    print('Gold?:', self.list_things_at(agent.location, tclass=Gold))
                     sys.exit(-1)
 
         elif action == 'Climb':
@@ -353,9 +353,9 @@ class WumpusEnvironment(agents.XYEnvironment):
                     poor_wumpus.alive = False
                     self.global_percept_events.append('Scream')
                 except:
-                    print "Error: Wumpus should be here, but couldn't find it!"
-                    print 'All things:', aloc, self.list_things_at(aloc)
-                    print 'Wumpus?:', aloc, self.list_things_at(aloc, tclass=Wumpus)
+                    print("Error: Wumpus should be here, but couldn't find it!")
+                    print('All things:', aloc, self.list_things_at(aloc))
+                    print('Wumpus?:', aloc, self.list_things_at(aloc, tclass=Wumpus))
                     sys.exit(-1)
 
                 break
@@ -368,10 +368,10 @@ class WumpusEnvironment(agents.XYEnvironment):
         """Run environment while displaying ascii map, for given number of steps."""
         for step in range(steps):
             if self.is_done():
-                print 'Done, stopping.'
-                print self.to_string()
+                print('Done, stopping.')
+                print(self.to_string())
                 return
-            print self.to_string()
+            print(self.to_string())
             self.step()
 
     def add_walls(self):
@@ -405,7 +405,7 @@ class WumpusEnvironment(agents.XYEnvironment):
         """ Awkward implementation of quick-n-dirty ascii display of Wumpus Environment
         Uses R&N AIMA roome coordinates: (0,0) is bottom-left in ascii display """
         if title:
-            print title
+            print(title)
         column_width = self.max_cell_print_len()
         cell_hline = [ '-' for i in range(column_width + 2) ] + ['|']
         cell_hline = ''.join(cell_hline)

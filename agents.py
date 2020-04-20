@@ -60,7 +60,7 @@ class Thing(object):
 
     def show_state(self):
         """Display the agent's internal state.  Subclasses should override."""
-        print "I don't know how to show_state."
+        print("I don't know how to show_state.")
 
     def display(self, canvas, x, y, width, height):
         """Display an image of this Thing on the canvas."""
@@ -86,7 +86,7 @@ class Agent(Thing):
         if program is None:
 
             def program(percept):
-                return raw_input('Percept=%s; action? ' % percept)
+                return input('Percept=%s; action? ' % percept)
 
         assert callable(program)
         self.program = program
@@ -104,7 +104,7 @@ def TraceAgent(agent):
 
     def new_program(percept):
         action = old_program(percept)
-        print '%s perceives %s and does %s' % (agent, percept, action)
+        print('%s perceives %s and does %s' % (agent, percept, action))
         return action
 
     agent.program = new_program
@@ -189,7 +189,8 @@ def TableDrivenVacuumAgent():
 def ReflexVacuumAgent():
     """A reflex agent for the two-state vacuum environment. [Fig. 2.8]"""
 
-    def program((location, status)):
+    def program(args):
+        location, status = args
         if status == 'Dirty':
             return 'Suck'
         if location == loc_A:
@@ -205,8 +206,9 @@ def ModelBasedVacuumAgent():
     model = {loc_A: None,
      loc_B: None}
 
-    def program((location, status)):
+    def program(args):
         """Same as ReflexVacuumAgent, except if everything is clean, do NoOp."""
+        location, status = args
         model[location] = status
         if model[loc_A] == model[loc_B] == 'Clean':
             return 'NoOp'
@@ -306,10 +308,10 @@ class Environment(object):
         try:
             self.things.remove(thing)
         except ValueError as e:
-            print e
-            print '  in Environment delete_thing'
-            print '  Thing to be removed: %s at %s' % (thing, thing.location)
-            print '  from list: %s' % [ (thing, thing.location) for thing in self.things ]
+            print(e)
+            print('  in Environment delete_thing')
+            print('  Thing to be removed: %s at %s' % (thing, thing.location))
+            print('  from list: %s' % [ (thing, thing.location) for thing in self.things ])
 
         if thing in self.agents:
             self.agents.remove(thing)
@@ -516,11 +518,11 @@ def test_agent(AgentFactory, steps, envs):
         env.run(steps)
         return agent.performance
 
-    return mean(map(score, envs))
+    return mean(list(map(score, envs)))
 
 
 __doc__ += "\n>>> a = ReflexVacuumAgent()\n>>> a.program((loc_A, 'Clean'))\n'Right'\n>>> a.program((loc_B, 'Clean'))\n'Left'\n>>> a.program((loc_A, 'Dirty'))\n'Suck'\n>>> a.program((loc_A, 'Dirty'))\n'Suck'\n\n>>> e = TrivialVacuumEnvironment()\n>>> e.add_thing(ModelBasedVacuumAgent())\n>>> e.run(5)\n\n## Environments, and some agents, are randomized, so the best we can\n## give is a range of expected scores.  If this test fails, it does\n## not necessarily mean something is wrong.\n>>> envs = [TrivialVacuumEnvironment() for i in range(100)]\n>>> def testv(A): return test_agent(A, 4, copy.deepcopy(envs))\n>>> 7 < testv(ModelBasedVacuumAgent) < 11\nTrue\n>>> 5 < testv(ReflexVacuumAgent) < 9\nTrue\n>>> 2 < testv(TableDrivenVacuumAgent) < 6\nTrue\n>>> 0.5 < testv(RandomVacuumAgent) < 3\nTrue\n"
-import Tkinter as tk
+import tkinter as tk
 
 class EnvGUI(tk.Tk, object):
 
@@ -554,12 +556,12 @@ class EnvToolbar(tk.Frame, object):
         scale.pack(side='left')
 
     def run(self):
-        print 'run'
+        print('run')
         self.running = True
         self.background_run()
 
     def stop(self):
-        print 'stop'
+        print('stop')
         self.running = False
 
     def background_run(self):
@@ -570,14 +572,14 @@ class EnvToolbar(tk.Frame, object):
             self.after(ms, self.background_run)
 
     def list_things(self):
-        print 'Things in the environment:'
+        print('Things in the environment:')
         for thing in self.env.things:
-            print '%s at %s' % (thing, thing.location)
+            print('%s at %s' % (thing, thing.location))
 
     def list_agents(self):
-        print 'Agents in the environment:'
+        print('Agents in the environment:')
         for agt in self.env.agents:
-            print '%s at %s' % (agt, agt.location)
+            print('%s at %s' % (agt, agt.location))
 
     def set_speed(self, speed):
         self.speed = float(speed)

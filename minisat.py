@@ -50,8 +50,8 @@ class AIMA_to_Dimacs_Translator(object):
         self.varobj_dict = {}
         variables = prop_symbols_from_clause_list(clauses)
         ret = 'p cnf %d %d' % (len(variables), len(clauses))
-        varis = dict(zip(sorted(variables, key=lambda v: v.op),
-                         map(str, range(1, len(variables) + 1))))
+        varis = dict(list(zip(sorted(variables, key=lambda v: v.op),
+                         list(map(str, list(range(1, len(variables) + 1)))))))
         for var in varis:
             self.varname_dict[var] = varis[var]
             self.varobj_dict[varis[var]] = var
@@ -90,8 +90,8 @@ class AIMA_to_Dimacs_Translator(object):
         variables = prop_symbols_from_clause_list(clauses)
         if variable in variables:
             variables.remove(variable)
-        varis = dict(zip(sorted(variables, key=lambda v: v.op),
-                         map(str, range(1, len(variables) + 1))))
+        varis = dict(list(zip(sorted(variables, key=lambda v: v.op),
+                         list(map(str, list(range(1, len(variables) + 1)))))))
         for var in varis:
             self.varname_dict[var] = varis[var]
             self.varobj_dict[varis[var]] = var
@@ -149,8 +149,8 @@ class Solution(object):
         return self.varmap[i]
 
     def pprint(self):
-        print self.success
-        print self.varmap
+        print(self.success)
+        print(self.varmap)
 
 
 class Minisat(object):

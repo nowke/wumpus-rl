@@ -20,14 +20,15 @@
 
 """
 
-from __future__ import generators
-import operator, math, random, copy, sys, os.path, bisect, re
 
-assert (2,5) <= sys.version_info < (3,), """\
-This code is meant for Python 2.5 through 2.7.
-You might find that the parts you care about still work in older
-Pythons or happen to work in newer ones, but you're on your own --
-edit utils.py if you want to try it."""
+import operator, math, random, copy, sys, os.path, bisect, re
+from functools import reduce
+
+# assert (2,5) <= sys.version_info < (3,), """\
+# This code is meant for Python 2.5 through 2.7.
+# You might find that the parts you care about still work in older
+# Pythons or happen to work in newer ones, but you're on your own --
+# edit utils.py if you want to try it."""
 
 #______________________________________________________________________________
 # Compatibility with Python 2.2, 2.3, and 2.4
@@ -38,202 +39,202 @@ edit utils.py if you want to try it."""
 # starting to go beyond what can be filled in this way, but here's
 # the compatibility code still since it doesn't hurt:
 
-try: bool, True, False ## Introduced in 2.3
-except NameError:
-    class bool(int):
-        "Simple implementation of Booleans, as in PEP 285"
-        def __init__(self, val): self.val = val
-        def __int__(self): return self.val
-        def __repr__(self): return ('False', 'True')[self.val]
+# try: bool, True, False ## Introduced in 2.3
+# except NameError:
+#     class bool(int):
+#         "Simple implementation of Booleans, as in PEP 285"
+#         def __init__(self, val): self.val = val
+#         def __int__(self): return self.val
+#         def __repr__(self): return ('False', 'True')[self.val]
 
-    True, False = bool(1), bool(0)
+#     True, False = bool(1), bool(0)
 
-try: sum ## Introduced in 2.3
-except NameError:
-    def sum(seq, start=0):
-        """Sum the elements of seq.
-        >>> sum([1, 2, 3])
-        6
-        """
-        return reduce(operator.add, seq, start)
+# try: sum ## Introduced in 2.3
+# except NameError:
+#     def sum(seq, start=0):
+#         """Sum the elements of seq.
+#         >>> sum([1, 2, 3])
+#         6
+#         """
+#         return reduce(operator.add, seq, start)
 
-try: enumerate  ## Introduced in 2.3
-except NameError:
-    def enumerate(collection):
-        """Return an iterator that enumerates pairs of (i, c[i]). PEP 279.
-        >>> list(enumerate('abc'))
-        [(0, 'a'), (1, 'b'), (2, 'c')]
-        """
-        ## Copied from PEP 279
-        i = 0
-        it = iter(collection)
-        while 1:
-            yield (i, it.next())
-            i += 1
-
-
-try: reversed ## Introduced in 2.4
-except NameError:
-    def reversed(seq):
-        """Iterate over x in reverse order.
-        >>> list(reversed([1,2,3]))
-        [3, 2, 1]
-        """
-        if hasattr(seq, 'keys'):
-            raise TypeError("mappings do not support reverse iteration")
-        i = len(seq)
-        while i > 0:
-            i -= 1
-            yield seq[i]
+# try: enumerate  ## Introduced in 2.3
+# except NameError:
+#     def enumerate(collection):
+#         """Return an iterator that enumerates pairs of (i, c[i]). PEP 279.
+#         >>> list(enumerate('abc'))
+#         [(0, 'a'), (1, 'b'), (2, 'c')]
+#         """
+#         ## Copied from PEP 279
+#         i = 0
+#         it = iter(collection)
+#         while 1:
+#             yield (i, next(it))
+#             i += 1
 
 
-try: sorted ## Introduced in 2.4
-except NameError:
-    def sorted(seq, cmp=None, key=None, reverse=False):
-        """Copy seq and sort and return it.
-        >>> sorted([3, 1, 2])
-        [1, 2, 3]
-        """
-        seq2 = copy.copy(seq)
-        if key:
-            if cmp == None:
-                cmp = __builtins__.cmp
-            seq2.sort(lambda x,y: cmp(key(x), key(y)))
-        else:
-            if cmp == None:
-                seq2.sort()
-            else:
-                seq2.sort(cmp)
-        if reverse:
-            seq2.reverse()
-        return seq2
-
-try:
-    set, frozenset ## set builtin introduced in 2.4
-except NameError:
-    try:
-        import sets ## sets module introduced in 2.3
-        set, frozenset = sets.Set, sets.ImmutableSet
-    except (NameError, ImportError):
-        class BaseSet:
-            "set type (see http://docs.python.org/lib/types-set.html)"
+# try: reversed ## Introduced in 2.4
+# except NameError:
+#     def reversed(seq):
+#         """Iterate over x in reverse order.
+#         >>> list(reversed([1,2,3]))
+#         [3, 2, 1]
+#         """
+#         if hasattr(seq, 'keys'):
+#             raise TypeError("mappings do not support reverse iteration")
+#         i = len(seq)
+#         while i > 0:
+#             i -= 1
+#             yield seq[i]
 
 
-            def __init__(self, elements=[]):
-                self.dict = {}
-                for e in elements:
-                    self.dict[e] = 1
+# try: sorted ## Introduced in 2.4
+# except NameError:
+#     def sorted(seq, cmp=None, key=None, reverse=False):
+#         """Copy seq and sort and return it.
+#         >>> sorted([3, 1, 2])
+#         [1, 2, 3]
+#         """
+#         seq2 = copy.copy(seq)
+#         if key:
+#             if cmp == None:
+#                 cmp = __builtins__.cmp
+#             seq2.sort(lambda x,y: cmp(key(x), key(y)))
+#         else:
+#             if cmp == None:
+#                 seq2.sort()
+#             else:
+#                 seq2.sort(cmp)
+#         if reverse:
+#             seq2.reverse()
+#         return seq2
 
-            def __len__(self):
-                return len(self.dict)
-
-            def __iter__(self):
-                for e in self.dict:
-                    yield e
-
-            def __contains__(self, element):
-                return element in self.dict
-
-            def issubset(self, other):
-                for e in self.dict.keys():
-                    if e not in other:
-                        return False
-                return True
-
-            def issuperset(self, other):
-                for e in other:
-                    if e not in self:
-                        return False
-                return True
+# try:
+#     set, frozenset ## set builtin introduced in 2.4
+# except NameError:
+#     try:
+#         import sets ## sets module introduced in 2.3
+#         set, frozenset = sets.Set, sets.ImmutableSet
+#     except (NameError, ImportError):
+#         class BaseSet:
+#             "set type (see http://docs.python.org/lib/types-set.html)"
 
 
-            def union(self, other):
-                return type(self)(list(self) + list(other))
+#             def __init__(self, elements=[]):
+#                 self.dict = {}
+#                 for e in elements:
+#                     self.dict[e] = 1
 
-            def intersection(self, other):
-                return type(self)([e for e in self.dict if e in other])
+#             def __len__(self):
+#                 return len(self.dict)
 
-            def difference(self, other):
-                return type(self)([e for e in self.dict if e not in other])
+#             def __iter__(self):
+#                 for e in self.dict:
+#                     yield e
 
-            def symmetric_difference(self, other):
-                return type(self)([e for e in self.dict if e not in other] +
-                                  [e for e in other if e not in self.dict])
+#             def __contains__(self, element):
+#                 return element in self.dict
 
-            def copy(self):
-                return type(self)(self.dict)
+#             def issubset(self, other):
+#                 for e in list(self.dict.keys()):
+#                     if e not in other:
+#                         return False
+#                 return True
 
-            def __repr__(self):
-                elements = ", ".join(map(str, self.dict))
-                return "%s([%s])" % (type(self).__name__, elements)
+#             def issuperset(self, other):
+#                 for e in other:
+#                     if e not in self:
+#                         return False
+#                 return True
 
-            __le__ = issubset
-            __ge__ = issuperset
-            __or__ = union
-            __and__ = intersection
-            __sub__ = difference
-            __xor__ = symmetric_difference
 
-        class frozenset(BaseSet):
-            "A frozenset is a BaseSet that has a hash value and is immutable."
+#             def union(self, other):
+#                 return type(self)(list(self) + list(other))
 
-            def __init__(self, elements=[]):
-                BaseSet.__init__(elements)
-                self.hash = 0
-                for e in self:
-                    self.hash |= hash(e)
+#             def intersection(self, other):
+#                 return type(self)([e for e in self.dict if e in other])
 
-            def __hash__(self):
-                return self.hash
+#             def difference(self, other):
+#                 return type(self)([e for e in self.dict if e not in other])
 
-        class set(BaseSet):
-            "A set is a BaseSet that does not have a hash, but is mutable."
+#             def symmetric_difference(self, other):
+#                 return type(self)([e for e in self.dict if e not in other] +
+#                                   [e for e in other if e not in self.dict])
 
-            def update(self, other):
-                for e in other:
-                    self.add(e)
-                return self
+#             def copy(self):
+#                 return type(self)(self.dict)
 
-            def intersection_update(self, other):
-                for e in self.dict.keys():
-                    if e not in other:
-                        self.remove(e)
-                return self
+#             def __repr__(self):
+#                 elements = ", ".join(map(str, self.dict))
+#                 return "%s([%s])" % (type(self).__name__, elements)
 
-            def difference_update(self, other):
-                for e in self.dict.keys():
-                    if e in other:
-                        self.remove(e)
-                return self
+#             __le__ = issubset
+#             __ge__ = issuperset
+#             __or__ = union
+#             __and__ = intersection
+#             __sub__ = difference
+#             __xor__ = symmetric_difference
 
-            def symmetric_difference_update(self, other):
-                to_remove1 = [e for e in self.dict if e in other]
-                to_remove2 = [e for e in other if e in self.dict]
-                self.difference_update(to_remove1)
-                self.difference_update(to_remove2)
-                return self
+#         class frozenset(BaseSet):
+#             "A frozenset is a BaseSet that has a hash value and is immutable."
 
-            def add(self, element):
-                self.dict[element] = 1
+#             def __init__(self, elements=[]):
+#                 BaseSet.__init__(elements)
+#                 self.hash = 0
+#                 for e in self:
+#                     self.hash |= hash(e)
 
-            def remove(self, element):
-                del self.dict[element]
+#             def __hash__(self):
+#                 return self.hash
 
-            def discard(self, element):
-                if element in self.dict:
-                    del self.dict[element]
+#         class set(BaseSet):
+#             "A set is a BaseSet that does not have a hash, but is mutable."
 
-            def pop(self):
-                key, val = self.dict.popitem()
-                return key
+#             def update(self, other):
+#                 for e in other:
+#                     self.add(e)
+#                 return self
 
-            def clear(self):
-                self.dict.clear()
+#             def intersection_update(self, other):
+#                 for e in list(self.dict.keys()):
+#                     if e not in other:
+#                         self.remove(e)
+#                 return self
 
-            __ior__ = update
-            __iand__ = intersection_update
-            __isub__ = difference_update
-            __ixor__ = symmetric_difference_update
+#             def difference_update(self, other):
+#                 for e in list(self.dict.keys()):
+#                     if e in other:
+#                         self.remove(e)
+#                 return self
+
+#             def symmetric_difference_update(self, other):
+#                 to_remove1 = [e for e in self.dict if e in other]
+#                 to_remove2 = [e for e in other if e in self.dict]
+#                 self.difference_update(to_remove1)
+#                 self.difference_update(to_remove2)
+#                 return self
+
+#             def add(self, element):
+#                 self.dict[element] = 1
+
+#             def remove(self, element):
+#                 del self.dict[element]
+
+#             def discard(self, element):
+#                 if element in self.dict:
+#                     del self.dict[element]
+
+#             def pop(self):
+#                 key, val = self.dict.popitem()
+#                 return key
+
+#             def clear(self):
+#                 self.dict.clear()
+
+#             __ior__ = update
+#             __iand__ = intersection_update
+#             __isub__ = difference_update
+#             __ixor__ = symmetric_difference_update
 
 
 
@@ -277,7 +278,7 @@ class Struct:
             return cmp(self.__dict__, other)
 
     def __repr__(self):
-        args = ['%s=%s' % (k, repr(v)) for (k, v) in vars(self).items()]
+        args = ['%s=%s' % (k, repr(v)) for (k, v) in list(vars(self).items())]
         return 'Struct(%s)' % ', '.join(sorted(args))
 
 def update(x, **entries):
@@ -448,12 +449,12 @@ def histogram(values, mode=0, bin_function=None):
     """Return a list of (value, count) pairs, summarizing the input values.
     Sorted by increasing value, or if mode=1, by decreasing count.
     If bin_function is given, map it over values first."""
-    if bin_function: values = map(bin_function, values)
+    if bin_function: values = list(map(bin_function, values))
     bins = {}
     for val in values:
         bins[val] = bins.get(val, 0) + 1
     if mode:
-        return sorted(bins.items(), key=lambda x: (x[1],x[0]), reverse=True)
+        return sorted(list(bins.items()), key=lambda x: (x[1],x[0]), reverse=True)
     else:
         return sorted(bins.items())
 
@@ -580,12 +581,16 @@ def turn_right(heading):
 def turn_left(heading):
     return turn_heading(heading, +1)
 
-def distance((ax, ay), (bx, by)):
+def distance(a, b):
     "The distance between two (x, y) points."
+    (ax, ay) = a
+    (bx, by) = b
     return math.hypot((ax - bx), (ay - by))
 
-def distance2((ax, ay), (bx, by)):
+def distance2(a, b):
     "The square of the distance between two (x, y) points."
+    (ax, ay) = a
+    (bx, by) = b
     return (ax - bx)**2 + (ay - by)**2
 
 def vector_clip(vector, lowest, highest):
@@ -595,7 +600,7 @@ def vector_clip(vector, lowest, highest):
     >>> vector_clip((-1, 10), (0, 0), (9, 9))
     (0, 9)
     """
-    return type(vector)(map(clip, vector, lowest, highest))
+    return type(vector)(list(map(clip, vector, lowest, highest)))
 
 #______________________________________________________________________________
 # Misc Functions
@@ -632,7 +637,7 @@ def memoize(fn, slot=None):
                 return val
     else:
         def memoized_fn(*args):
-            if not memoized_fn.cache.has_key(args):
+            if args not in memoized_fn.cache:
                 memoized_fn.cache[args] = fn(*args)
             return memoized_fn.cache[args]
         memoized_fn.cache = {}
@@ -678,17 +683,17 @@ def print_table(table, header=None, sep='   ', numfmt='%g'):
         table = [header] + table
     table = [[if_(isnumber(x), lambda: numfmt % x, lambda: x) for x in row]
              for row in table]
-    maxlen = lambda seq: max(map(len, seq))
-    sizes = map(maxlen, zip(*[map(str, row) for row in table]))
+    maxlen = lambda seq: max(list(map(len, seq)))
+    sizes = list(map(maxlen, list(zip(*[list(map(str, row)) for row in table]))))
     for row in table:
-        print sep.join(getattr(str(x), j)(size)
-                       for (j, size, x) in zip(justs, sizes, row))
+        print(sep.join(getattr(str(x), j)(size)
+                       for (j, size, x) in zip(justs, sizes, row)))
 
 def AIMAFile(components, mode='r'):
     "Open a file based at the AIMA root directory."
     import utils
     dir = os.path.dirname(utils.__file__)
-    return open(apply(os.path.join, [dir] + components), mode)
+    return open(os.path.join(*[dir] + components), mode)
 
 def DataFile(name, mode='r'):
     "Return a file in the AIMA /data directory."
@@ -720,7 +725,7 @@ def print_not_implemented(name=None):
     elsewhere: instead, a test will determine whether the fn has been
     implemented and print_not_implemented gets called.)
     """
-    print "--> {0}() is not implemented.".format(name if name != None else caller(2))
+    print("--> {0}() is not implemented.".format(name if name != None else caller(2)))
 
 #______________________________________________________________________________
 # Queues: Stack, FIFOQueue, PriorityQueue
@@ -786,7 +791,7 @@ class PriorityQueue(Queue):
         else:
             return self.A.pop()[1]
     def __contains__(self, item):
-        return some(lambda (_, x): x == item, self.A)
+        return some(lambda __x: __x[1] == item, self.A)
     def __getitem__(self, key):
         for _, item in self.A:
             if item == key:
