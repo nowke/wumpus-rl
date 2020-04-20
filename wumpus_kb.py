@@ -155,7 +155,18 @@ def axiom_generator_percept_sentence(t, tvec):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+
+    # Convert to [(Stench, False), (Breeze, True), ...]
+    axiom_percepts = zip(proposition_bases_perceptual_fluents, tvec)
+
+    # Convert to ['~Stench0', 'Breeze0', ...]
+    axiom_percepts_repr = map(
+        lambda x: '{0}{1}'.format(x[0], str(t)) if x[1] else '~{0}{1}'.format(x[0], str(t)),
+        axiom_percepts
+    )
+
+    # Build the final string
+    axiom_str = ' & '.join(axiom_percepts_repr)
     return axiom_str
 
 
@@ -172,7 +183,9 @@ def axiom_generator_initial_location_assertions(x, y):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+
+    # Format - '(~P1_1 & ~W1_1)'
+    axiom_str = "(~{0} & ~{1})".format(pit_str(x, y), wumpus_str(x, y))
     return axiom_str
 
 def axiom_generator_pits_and_breezes(x, y, xmin, xmax, ymin, ymax):
@@ -187,6 +200,19 @@ def axiom_generator_pits_and_breezes(x, y, xmin, xmax, ymin, ymax):
     """
     axiom_str = ''
     "*** YOUR CODE HERE ***"
+    # Find the neighbors for <x, y> subject to walls
+    neighbors = []
+
+    if x > xmin: neighbors.append(pit_str(x-1, y)) # Check west
+    if x < xmax: neighbors.append(pit_str(x+1, y)) # Check east
+    if y > ymin: neighbors.append(pit_str(x, y-1)) # Check north
+    if y < ymax: neighbors.append(pit_str(x, y+1)) # Check south
+
+    # Pits could be in neighbors or current location
+    pits_repr = " | ".join(neighbors + [pit_str(x, y)])
+
+    # Final axiom follows - 'B2_4 <=> (P2_4 | P1_4 | P3_4 | P2_3)'
+    axiom_str = "{0} <=> ({1})".format(breeze_str(x,y), pits_repr)
     return axiom_str
 
 def generate_pit_and_breeze_axioms(xmin, xmax, ymin, ymax):
@@ -213,6 +239,19 @@ def axiom_generator_wumpus_and_stench(x, y, xmin, xmax, ymin, ymax):
     """
     axiom_str = ''
     "*** YOUR CODE HERE ***"
+    # Find the neighbors for <x, y> subject to walls
+    neighbors = []
+
+    if x > xmin: neighbors.append(wumpus_str(x-1, y)) # Check west
+    if x < xmax: neighbors.append(wumpus_str(x+1, y)) # Check east
+    if y > ymin: neighbors.append(wumpus_str(x, y-1)) # Check north
+    if y < ymax: neighbors.append(wumpus_str(x, y+1)) # Check south
+
+    # Wumpus could be in neighbors or current location
+    wumpus_repr = " | ".join(neighbors + [wumpus_str(x, y)])
+
+    # Final axiom follows - 'S2_4 <=> (W2_4 | W1_4 | W3_4 | W2_3)'
+    axiom_str = "{0} <=> ({1})".format(stench_str(x,y), wumpus_repr)
     return axiom_str
 
 def generate_wumpus_and_stench_axioms(xmin, xmax, ymin, ymax):
@@ -233,7 +272,17 @@ def axiom_generator_at_least_one_wumpus(xmin, xmax, ymin, ymax):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    
+    # Generate all wumpus locations
+    # ['W1_1', 'W1_2', ..., 'W4_4']
+    wumpus_locations = [
+        wumpus_str(x, y)
+        for x in range(xmin, xmax + 1) 
+        for y in range(ymin, ymax + 1)
+    ]
+    
+    # Final format => '(W1_1 | W1_2 | ... | W4_4)'
+    axiom_str = "({0})".format(' | '.join(wumpus_locations))
     return axiom_str
 
 def axiom_generator_at_most_one_wumpus(xmin, xmax, ymin, ymax):
@@ -245,7 +294,27 @@ def axiom_generator_at_most_one_wumpus(xmin, xmax, ymin, ymax):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    import itertools
+
+    # Get all locations
+    locations = [(x, y) for x in range(xmin, xmax + 1) for y in range(ymin, ymax + 1)]
+
+    # Generate pairs of locations
+    all_pairs = itertools.combinations(locations, 2)
+
+    # Convert to the format:
+    #   ['(~W1_1 | ~W1_2)', '(~W1_1 | ~W1_3)', ...]
+    wumpus_axiom_pairs = map(
+        lambda x: "(~{0} | ~{1})".format(
+            wumpus_str(x[0][0], x[0][1]),
+            wumpus_str(x[1][0], x[1][1]),
+        ),
+        all_pairs
+    )
+    
+    # Join all wumpus axions with AND
+    #  - '(~W1_1 | ~W1_2) & (~W1_1 | ~W1_3) & ...'
+    axiom_str = ' & '.join(wumpus_axiom_pairs)
     return axiom_str
 
 def axiom_generator_only_in_one_location(xi, yi, xmin, xmax, ymin, ymax, t = 0):
@@ -259,7 +328,21 @@ def axiom_generator_only_in_one_location(xi, yi, xmin, xmax, ymin, ymax, t = 0):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+
+    # Find locations other than (xi, yi)
+    other_locations = [
+        "~{0}".format(state_loc_str(x, y, t))
+        for x in range(xmin, xmax + 1) for y in range(ymin, ymax + 1)
+        if (x, y) != (xi, yi)
+    ]
+    
+    # Join other locations and negate
+    #  - '~(L1_2_0 & L1_3_0 & ...)'
+    other_loc_str = ' & '.join(other_locations)
+    
+    # Final format
+    # - 'L1_1_0 & ~(L1_2_0 & L1_3_0 & ...)'
+    axiom_str = "{0} & {1}".format(state_loc_str(xi, yi, t), other_loc_str)
     return axiom_str
 
 def axiom_generator_only_one_heading(heading = 'north', t = 0):
@@ -273,7 +356,23 @@ def axiom_generator_only_one_heading(heading = 'north', t = 0):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+
+    # construct directions axioms
+    # - ['~HeadingNorth0', 'HeadingSouth0', ...]
+    directions_fns = [
+        ('north', state_heading_north_str),
+        ('east', state_heading_east_str),
+        ('south', state_heading_south_str),
+        ('west', state_heading_west_str)
+    ]
+    directions_str = map(
+        lambda x: "~{0}".format(x[1](t)) if x[0] != heading else x[1](t),
+        directions_fns
+    )
+
+    # Final format - join by '&'
+    # - 'HeadingNorth0 & ~HeadingSouth0 & ~HeadingEast0 & ~HeadingWest0'
+    axiom_str = ' & '.join(directions_str)
     return axiom_str
 
 def axiom_generator_have_arrow_and_wumpus_alive(t = 0):
@@ -285,7 +384,10 @@ def axiom_generator_have_arrow_and_wumpus_alive(t = 0):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    axiom_str = "{0} & {1}".format(
+        state_have_arrow_str(t),
+        state_wumpus_alive_str(t)
+    )
     return axiom_str
 
 
@@ -326,6 +428,23 @@ def axiom_generator_location_OK(x, y, t):
     """
     axiom_str = ''
     "*** YOUR CODE HERE ***"
+    ok_repr           = state_OK_str(x, y, t)
+    pit_repr          = pit_str(x, y)
+    wumpus_repr       = wumpus_str(x, y)
+    wumpus_alive_repr = state_wumpus_alive_str(t)
+
+    # Location is safe if,
+    #       (i)  No pit in (x, y)    
+    #   AND (ii) No wumpus in (x, y) that is alive
+    safe_conditions = "~{0} & ~({1} & {2})".format(
+        pit_repr,
+        wumpus_repr,
+        wumpus_alive_repr
+    )
+
+    # Final axioms is bidrectional
+    # - 'OK1_1_0 <=> (<safe_conditions>)'
+    axiom_str = "{0} <=> ({1})".format(ok_repr, safe_conditions)
     return axiom_str
 
 def generate_square_OK_axioms(t, xmin, xmax, ymin, ymax):
@@ -351,6 +470,14 @@ def axiom_generator_breeze_percept_and_location_property(x, y, t):
     """
     axiom_str = ''
     "*** YOUR CODE HERE ***"
+
+    # Format
+    # - example: 'L1_1_0 >> (Breeze0 <=> B1_1)'
+    axiom_str = '{0} >> ({1} <=> {2})'.format(
+        state_loc_str(x, y, t),
+        percept_breeze_str(t),
+        breeze_str(x, y)
+    )
     return axiom_str
 
 def generate_breeze_percept_and_location_axioms(t, xmin, xmax, ymin, ymax):
@@ -372,6 +499,13 @@ def axiom_generator_stench_percept_and_location_property(x, y, t):
     """
     axiom_str = ''
     "*** YOUR CODE HERE ***"
+    # Format
+    # - example: 'L1_1_0 >> (Stench0 <=> S1_1)'
+    axiom_str = '{0} >> ({1} <=> {2})'.format(
+        state_loc_str(x, y, t),
+        percept_stench_str(t),
+        stench_str(x, y)
+    )
     return axiom_str
 
 def generate_stench_percept_and_location_axioms(t, xmin, xmax, ymin, ymax):
@@ -410,6 +544,73 @@ def axiom_generator_at_location_ssa(t, x, y, xmin, xmax, ymin, ymax):
     """
     axiom_str = ''
     "*** YOUR CODE HERE ***"
+    # We need to consider all 7 actions and decide what should happen to
+    # the agent at time `t+1`
+    sentences = []
+
+    # For the 6 actions 'Grab', 'Shoot', 'Climb', 'TurnLeft', 'TurnRight', and
+    # 'Wait', there will be no change in locations.
+    # We can write it as,
+    #  - ((Lx_y_t & (Grab0 | Shoot0 | ...)) >> Lx_y_t+1)
+    no_loc_change = "(({0} & ({1} | {2} | {3} | {4} | {5} | {6})) >> {7})".format(
+        state_loc_str(x, y, t),
+        action_grab_str(t),
+        action_shoot_str(t),
+        action_climb_str(t),
+        action_turn_left_str(t),
+        action_turn_right_str(t),
+        action_wait_str(t),
+        state_loc_str(x, y, t+1)
+    )
+    sentences.append(no_loc_change)
+    
+    # For the 'Forward' action, the location will change based on boundaries
+    # depending on direction the agent is currently facing
+    # 
+    # The format as per AIMA book,
+    #  ((L1_1_0 & HeadingEast0 & Forward0) >> (L2_1_1 & ~L1_1_1))
+    if x > xmin:
+        # West
+        sentences.append('(({0} & {1} & {2}) >> ({3} & ~{4}))'.format(
+            state_loc_str(x, y, t),
+            state_heading_west_str(t),
+            action_forward_str(t),
+            state_loc_str(x-1, y, t+1),
+            state_loc_str(x,   y, t+1)
+        ))
+
+    if x < xmax:
+        # East
+        sentences.append('(({0} & {1} & {2}) >> ({3} & ~{4}))'.format(
+            state_loc_str(x, y, t),
+            state_heading_east_str(t),
+            action_forward_str(t),
+            state_loc_str(x+1, y, t+1),
+            state_loc_str(x,   y, t+1)
+        ))
+
+    if y > ymin:
+        # South
+        sentences.append('(({0} & {1} & {2}) >> ({3} & ~{4}))'.format(
+            state_loc_str(x, y, t),
+            state_heading_south_str(t),
+            action_forward_str(t),
+            state_loc_str(x, y-1, t+1),
+            state_loc_str(x, y,   t+1)
+        ))
+
+    if y < ymax:
+        # North
+        sentences.append('(({0} & {1} & {2}) >> ({3} & ~{4}))'.format(
+            state_loc_str(x, y, t),
+            state_heading_north_str(t),
+            action_forward_str(t),
+            state_loc_str(x, y+1, t+1),
+            state_loc_str(x, y,   t+1)
+        ))
+
+    # Join all sentences using '&'
+    axiom_str = "({0})".format(' & '.join(sentences))
     return axiom_str
 
 def generate_at_location_ssa(t, x, y, xmin, xmax, ymin, ymax, heading):
@@ -449,7 +650,15 @@ def axiom_generator_have_arrow_ssa(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    
+    # Agent will have arrow iff it currently has arrow and does not shoot
+    # Format
+    #   'HaveArrow(t+1) <=> (HaveArrow(t) & ~Shoot(t))
+    axiom_str = "{0} <=> ({1} & ~{2})".format(
+        state_have_arrow_str(t+1),
+        state_have_arrow_str(t),
+        action_shoot_str(t)
+    )
     return axiom_str
 
 def axiom_generator_wumpus_alive_ssa(t):
@@ -466,7 +675,19 @@ def axiom_generator_wumpus_alive_ssa(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    
+    # Wumpus will be alive iff it currently is alive and agent did
+    # not receive a 'Scream' percept at t+1
+
+    # NOTE: This can be implemented as below also, (as per book)
+    #    WumpusAlive(t+1) <=> WumpusAlive(t) & ~(HaveArrow(t) & Shoot(t) & WumpusAhead(t))
+    # This will reduce the time step by 1. However, I couldn't figure out 
+    # how precisely to write `WumpusAhead` fluent
+    axiom_str = "{0} <=> ({1} & ~{2})".format(
+        state_wumpus_alive_str(t+1),
+        state_wumpus_alive_str(t),
+        percept_scream_str(t+1)
+    )
     return axiom_str
 
 #----------------------------------
@@ -482,7 +703,19 @@ def axiom_generator_heading_north_ssa(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    
+    # Agent will be North at t+1 when,
+    #  (i)   Agent was `North` and it did not take left and did not take right
+    #  (ii)  Agent was `East` and it took `TurnLeft` action
+    #  (iii) Agent was `West` and it took `TurnRight` action
+    axiom_str = "{0} <=> ({1} & ~{2} & ~{3}) | ({4} & {2}) | ({5} & {3})".format(
+        state_heading_north_str(t+1),
+        state_heading_north_str(t),
+        action_turn_left_str(t),
+        action_turn_right_str(t),
+        state_heading_east_str(t),
+        state_heading_west_str(t)
+    )
     return axiom_str
 
 def axiom_generator_heading_east_ssa(t):
@@ -495,7 +728,18 @@ def axiom_generator_heading_east_ssa(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    # Agent will be East at t+1 when,
+    #  (i)   Agent was `East` and it did not take left and did not take right
+    #  (ii)  Agent was `South` and it took `TurnLeft` action
+    #  (iii) Agent was `North` and it took `TurnRight` action
+    axiom_str = "{0} <=> ({1} & ~{2} & ~{3}) | ({4} & {2}) | ({5} & {3})".format(
+        state_heading_east_str(t+1),
+        state_heading_east_str(t),
+        action_turn_left_str(t),
+        action_turn_right_str(t),
+        state_heading_south_str(t),
+        state_heading_north_str(t)
+    )
     return axiom_str
 
 def axiom_generator_heading_south_ssa(t):
@@ -508,7 +752,18 @@ def axiom_generator_heading_south_ssa(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    # Agent will be South at t+1 when,
+    #  (i)   Agent was `South` and it did not take left and did not take right
+    #  (ii)  Agent was `West` and it took `TurnLeft` action
+    #  (iii) Agent was `East` and it took `TurnRight` action
+    axiom_str = "{0} <=> ({1} & ~{2} & ~{3}) | ({4} & {2}) | ({5} & {3})".format(
+        state_heading_south_str(t+1),
+        state_heading_south_str(t),
+        action_turn_left_str(t),
+        action_turn_right_str(t),
+        state_heading_west_str(t),
+        state_heading_east_str(t)
+    )
     return axiom_str
 
 def axiom_generator_heading_west_ssa(t):
@@ -521,7 +776,18 @@ def axiom_generator_heading_west_ssa(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    # Agent will be West at t+1 when,
+    #  (i)   Agent was `West` and it did not take left and did not take right
+    #  (ii)  Agent was `North` and it took `TurnLeft` action
+    #  (iii) Agent was `South` and it took `TurnRight` action
+    axiom_str = "{0} <=> ({1} & ~{2} & ~{3}) | ({4} & {2}) | ({5} & {3})".format(
+        state_heading_west_str(t+1),
+        state_heading_west_str(t),
+        action_turn_left_str(t),
+        action_turn_right_str(t),
+        state_heading_north_str(t),
+        state_heading_south_str(t)
+    )
     return axiom_str
 
 def generate_heading_ssa(t):
@@ -555,7 +821,15 @@ def axiom_generator_heading_only_north(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+
+    # Format
+    # - 'HeadingNorth0 <=> (~HeadingSouth0 & ~HeadingEast0 & ~HeadingWest0)'
+    axiom_str = "{0} <=> (~{1} & ~{2} & ~{3})".format(
+        state_heading_north_str(t),
+        state_heading_south_str(t),
+        state_heading_east_str(t),
+        state_heading_west_str(t),
+    )
     return axiom_str
 
 def axiom_generator_heading_only_east(t):
@@ -568,7 +842,15 @@ def axiom_generator_heading_only_east(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+
+    # Format
+    # - 'HeadingEast0 <=> (~HeadingSouth0 & ~HeadingNorth0 & ~HeadingWest0)'
+    axiom_str = "{0} <=> (~{1} & ~{2} & ~{3})".format(
+        state_heading_east_str(t),
+        state_heading_south_str(t),
+        state_heading_north_str(t),
+        state_heading_west_str(t),
+    )
     return axiom_str
 
 def axiom_generator_heading_only_south(t):
@@ -581,7 +863,15 @@ def axiom_generator_heading_only_south(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    
+    # Format
+    # - 'HeadingSouth0 <=> (~HeadingEast0 & ~HeadingNorth0 & ~HeadingWest0)'
+    axiom_str = "{0} <=> (~{1} & ~{2} & ~{3})".format(
+        state_heading_south_str(t),
+        state_heading_east_str(t),
+        state_heading_north_str(t),
+        state_heading_west_str(t),
+    )
     return axiom_str
 
 def axiom_generator_heading_only_west(t):
@@ -594,7 +884,15 @@ def axiom_generator_heading_only_west(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    
+    # Format
+    # - 'HeadingWest0 <=> (~HeadingEast0 & ~HeadingNorth0 & ~HeadingSouth0)'
+    axiom_str = "{0} <=> (~{1} & ~{2} & ~{3})".format(
+        state_heading_west_str(t),
+        state_heading_east_str(t),
+        state_heading_north_str(t),
+        state_heading_south_str(t),
+    )
     return axiom_str
 
 def generate_heading_only_one_direction_axioms(t):
@@ -613,7 +911,43 @@ def axiom_generator_only_one_action_axioms(t):
     axiom_str = ''
     "*** YOUR CODE HERE ***"
     # Comment or delete the next line once this function has been implemented.
-    utils.print_not_implemented()
+    actions_str = [
+        action_grab_str(t), action_shoot_str(t), action_climb_str(t),
+        action_turn_left_str(t), action_turn_right_str(t), 
+        action_forward_str(t), action_wait_str(t)
+    ]
+    
+    # Final Axiom has 2 parts to satisfy "ONLY" 1 action- 
+    #  (1) There is atleast 1 action
+    #  (2) There is atmost 1 action
+
+    ##################################
+    # (1) Atleast 1 action
+    # Format => '(Grab0 | Shoot0 | ... | Wait0)'
+    ##################################
+    at_least_one_axiom = "({0})".format(' | '.join(actions_str))
+
+    ##################################
+    # (2) Atmost 1 action
+    ##################################
+    import itertools
+
+    # Generate pairs of actions
+    all_pairs = itertools.combinations(actions_str, 2)
+
+    # Convert to the format:
+    #   ['(~Grab0 | ~Shoot0)', '(~Grab0 | ~Climb0)', ...]
+    action_axiom_pairs = map(
+        lambda x: "(~{0} | ~{1})".format(x[0], x[1]),
+        all_pairs
+    )
+    
+    # Join all action axioms with AND
+    #  - '(~Grab0 | ~Shoot0) & (~Grab0 | ~Climb0) & ...'
+    at_most_one_axiom = ' & '.join(action_axiom_pairs)
+    
+    # FINAL axiom - combine (1) and (2)
+    axiom_str = "{0} & {1}".format(at_least_one_axiom, at_most_one_axiom)
     return axiom_str
 
 

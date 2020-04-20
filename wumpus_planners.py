@@ -126,14 +126,27 @@ class PlanRouteProblem(search.Problem):
         Heuristic that will be used by search.astar_search()
         """
         "*** YOUR CODE HERE ***"
-        pass
+        # From `node` to every `goal` in `goals`, we calculate
+        # the manhattan distance with heading, and return the minimum
+        distances = list(map(
+            lambda goal: manhattan_distance_with_heading(node.state, goal),
+            self.goals
+        )) + [float("inf")]
+        return min(distances)
 
     def actions(self, state):
         """
         Return list of allowed actions that can be made in state
         """
         "*** YOUR CODE HERE ***"
-        pass
+        # Actions - TurnLeft, TurnRight, and Forward
+        # We will handle bumping in to walls in `result` function, hence
+        # no need to consider `state`
+        return [
+            action_turn_left_str(),
+            action_turn_right_str(),
+            action_forward_str()
+        ]
 
 
     def result(self, state, action):
@@ -141,14 +154,46 @@ class PlanRouteProblem(search.Problem):
         Return the new state after applying action to state
         """
         "*** YOUR CODE HERE ***"
-        pass
+        # Helper functions taken from `HybridWumpusAgent` class
+        def heading_to_vector(heading):
+            if heading == 0: return (0, 1)
+            elif heading == 1: return (-1, 0)
+            elif heading == 2: return (0, -1)
+            elif heading == 3: return (1, 0)
+        turn_heading = lambda heading, inc: (heading + inc) % 4
+
+        # Action - TurnLeft
+        if action == action_turn_left_str():
+            next_state = state[0], state[1], turn_heading(state[2], +1)
+            return next_state
+
+        # Action - TurnRight
+        if action == action_turn_right_str():
+            next_state = state[0], state[1], turn_heading(state[2], -1)
+            return next_state
+        
+        # Action - Forward
+        next_location = vector_add(
+            heading_to_vector(state[2]),
+            (state[0], state[1])
+        )
+        next_state = next_location[0], next_location[1], state[2]
+
+        # Check if it does not bump into wall
+        # HACK - if bumps in to wall, next_location could be out of 
+        # the boundary, which would not be there in `allowed` :D
+        if next_location in self.allowed:
+            return next_state
+
+        # Return same state if the forward atcion bumps into wall
+        return state
 
     def goal_test(self, state):
         """
         Return True if state is a goal state
         """
         "*** YOUR CODE HERE ***"
-        return True
+        return (state[0], state[1]) in self.goals
 
 #-------------------------------------------------------------------------------
 
@@ -231,29 +276,113 @@ class PlanShotProblem(search.Problem):
         Heuristic that will be used by search.astar_search()
         """
         "*** YOUR CODE HERE ***"
-        pass
+
+        # Since there is only 1 wumpus, `self.goals` contains only one element
+        wumpus_location = self.goals[0]
+        
+        # We find `goal` which is in straight line to the wumpus location
+        node_loc = node.state
+        x_diff = node_loc[0] - wumpus_location[0]
+        y_diff = node_loc[1] - wumpus_location[1]
+
+        # Wumpus already in straight line, we're almost there to shoot.
+        # We will take care of `heading` in goal test, it's alright for 
+        # heuristics.
+        if x_diff == 0 or y_diff == 0:
+            return 0
+
+        # Now we find whether we go in x-direction or y-direction,
+        # whichever is shortest
+        if abs(x_diff) < abs(y_diff):
+            goal = node_loc[0] + x_diff, node_loc[1], node_loc[2] # x-direciton
+        else:
+            goal = node_loc[0], node_loc[1] = y_diff, node_loc[2] # y-direction
+
+        return manhattan_distance_with_heading(
+            node.state,
+            goal
+        )
 
     def actions(self, state):
         """
         Return list of allowed actions that can be made in state
         """
         "*** YOUR CODE HERE ***"
-        pass
+        return [
+            action_turn_left_str(),
+            action_turn_right_str(),
+            action_forward_str()
+        ]
 
     def result(self, state, action):
         """
         Return the new state after applying action to state
         """
         "*** YOUR CODE HERE ***"
-        pass
+        # Helper functions taken from `HybridWumpusAgent` class
+        def heading_to_vector(heading):
+            if heading == 0: return (0, 1)
+            elif heading == 1: return (-1, 0)
+            elif heading == 2: return (0, -1)
+            elif heading == 3: return (1, 0)
+        turn_heading = lambda heading, inc: (heading + inc) % 4
+
+        # Action - TurnLeft
+        if action == action_turn_left_str():
+            next_state = state[0], state[1], turn_heading(state[2], +1)
+            return next_state
+
+        # Action - TurnRight
+        if action == action_turn_right_str():
+            next_state = state[0], state[1], turn_heading(state[2], -1)
+            return next_state
+        
+        # Action - Forward
+        next_location = vector_add(
+            heading_to_vector(state[2]),
+            (state[0], state[1])
+        )
+        next_state = next_location[0], next_location[1], state[2]
+
+        # Check if it does not bump into wall
+        # HACK - if bumps in to wall, next_location could be out of 
+        # the boundary, which would not be there in `allowed` :D
+        if next_location in self.allowed:
+            return next_state
+
+        # Return same state if the forward atcion bumps into wall
+        return state
 
     def goal_test(self, state):
         """
         Return True if state is a goal state
         """
         "*** YOUR CODE HERE ***"
-        return True
+        wumpus_location = self.goals[0]
 
+        # Here, we define actual goal, which is in direction of wumpus
+        x_diff = state[0] - wumpus_location[0]
+        y_diff = state[1] - wumpus_location[1]
+        heading = state[2]
+        
+        # if `x_diff` or `y_diff` is 0, we are already in goal location
+        # we just need to check if the `heading` is proper, so that we
+        # can directly shoot the wumpus
+        if x_diff == 0:
+            # heading should be north or south
+            if y_diff < 0 and heading == 0:
+                return True
+            if y_diff > 0 and heading == 2:
+                return True
+        if y_diff == 0:
+            # heading should be east or west
+            if x_diff < 0 and heading == 1:
+                return True
+            if x_diff > 0 and heading == 3:
+                return True
+
+        # `state` is not in direction of wumpus, definitely not a goal
+        return False
 #-------------------------------------------------------------------------------
 
 def test_PSP(initial = (0,0,3)):
