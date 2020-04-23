@@ -16,9 +16,9 @@
 # (see http://minisat.se) SAT solver, and is directly based on the satispy
 # python project, see https://github.com/netom/satispy .
 
-from wumpus_environment import *
-from wumpus_kb import *
-import search
+from .wumpus_environment import *
+from .wumpus_kb import *
+from . import search
 
 #-------------------------------------------------------------------------------
 # Distance fn

@@ -43,8 +43,8 @@ And a few other functions:
 """
 
 import itertools, re
-import agents
-from utils import *
+from . import agents
+from .utils import *
 
 #______________________________________________________________________________
 

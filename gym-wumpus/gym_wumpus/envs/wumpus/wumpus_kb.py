@@ -16,7 +16,7 @@
 # (see http://minisat.se) SAT solver, and is directly based on the satispy
 # python project, see https://github.com/netom/satispy .
 
-import utils
+from . import utils
 
 #-------------------------------------------------------------------------------
 # Wumpus Propositions

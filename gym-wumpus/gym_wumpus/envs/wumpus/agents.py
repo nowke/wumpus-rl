@@ -43,7 +43,7 @@ EnvToolbar ## contains buttons for controlling EnvGUI
 EnvCanvas ## Canvas to display the environment of an EnvGUI
 
 """
-from utils import *
+from .utils import *
 import random, copy
 
 class Thing(object):

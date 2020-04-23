@@ -16,7 +16,7 @@
 # (see http://minisat.se) SAT solver, and is directly based on the satispy
 # python project, see https://github.com/netom/satispy .
 
-from logic import *
+from .logic import *
 from subprocess import call
 from tempfile import NamedTemporaryFile
 

@@ -16,11 +16,11 @@
 # (see http://minisat.se) SAT solver, and is directly based on the satispy
 # python project, see https://github.com/netom/satispy .
 
-from logic import *
-from wumpus_environment import *
-from wumpus_kb import *
-from wumpus_planners import *
-import minisat as msat
+from .logic import *
+from .wumpus_environment import *
+from .wumpus_kb import *
+from .wumpus_planners import *
+from . import minisat as msat
 from time import clock
 import sys
 

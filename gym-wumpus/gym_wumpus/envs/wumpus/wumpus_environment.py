@@ -16,8 +16,8 @@
 # (see http://minisat.se) SAT solver, and is directly based on the satispy
 # python project, see https://github.com/netom/satispy .
 
-from utils import *
-import agents
+from .utils import *
+from . import agents
 import sys
 
 class Wumpus(agents.Thing):
