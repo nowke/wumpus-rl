@@ -1,0 +1,1 @@
+rm -rf models logs output.txt
