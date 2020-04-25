@@ -67,17 +67,10 @@ class Agent():
     def choose_action(self, observation):
         if np.random.random() < self.epsilon:
             action = np.random.choice(self.action_space)
-            ss = 'Acting randomly\n'
         else:
             state = np.array([observation])
             actions = self.q_eval.predict(state)
-
             action = np.argmax(actions)
-            ss = 'Acting optimally\n'
-
-        with open('output.txt', 'a') as f:
-            f.write(ss)
-
         return action
 
     def learn(self):

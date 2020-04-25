@@ -1,8 +1,11 @@
 import gym
-from .wumpus.wumpus import WumpusWorldScenario, Explorer, Wumpus, Pit, Gold
 from gym import spaces
 import numpy as np
 from collections import OrderedDict
+
+from gym_wumpus.utils import wumpus_to_np_array
+from .wumpus.wumpus import WumpusWorldScenario, Explorer, Wumpus, Pit, Gold
+
 
 
 ACTION_TURN_RIGHT = 'TurnRight'
@@ -15,7 +18,7 @@ ACTION_WAIT = 'Wait'
 
 
 class WumpusWorld(gym.Env):
-    metadata = {'render.modes': ['human']}
+    metadata = {'render.modes': ['human', 'rgb_array']}
 
     def __init__(self):
         self._reset()
@@ -102,7 +105,11 @@ class WumpusWorld(gym.Env):
         return self._state
 
     def render(self, mode='human', close=False):
-        print(self.env.to_string())
+        env_str = self.env.to_string()
+        if mode == 'human':
+            print(env_str)
+        elif mode == 'rgb_array':
+            return wumpus_to_np_array(env_str)
 
     def _reset(self):
         # TODO: Generalize this to take parameters from outside.
