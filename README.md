@@ -23,7 +23,7 @@ pip install -e gym-wumpus
 
 #### Sample usage execution
 
-```python
+```sh
 >>> import gym_wumpus   # To be imported before `gym`
 >>> import gym
 
