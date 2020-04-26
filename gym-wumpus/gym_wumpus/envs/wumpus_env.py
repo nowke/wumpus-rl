@@ -7,7 +7,6 @@ from gym_wumpus.utils import wumpus_to_np_array
 from .wumpus.wumpus import WumpusWorldScenario, Explorer, Wumpus, Pit, Gold
 
 
-
 ACTION_TURN_RIGHT = 'TurnRight'
 ACITON_TURN_LEFT = 'TurnLeft'
 ACTION_FORWARD = 'Forward'
@@ -20,7 +19,18 @@ ACTION_WAIT = 'Wait'
 class WumpusWorld(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
 
-    def __init__(self):
+    def __init__(self, width=4, height=4, entrance=(1, 1), heading='north',
+                 wumpus=(1, 3), pits=((3, 3), (3, 1)), gold=(2, 3),
+                 modify_reward=True):
+        self.width = width
+        self.height = height
+        self.entrance = entrance
+        self.heading = heading
+        self.wumpus = wumpus
+        self.pits = pits
+        self.gold = gold
+        self.modify_reward = modify_reward
+
         self._reset()
         self.actions = [
             ACTION_TURN_RIGHT, ACITON_TURN_LEFT, ACTION_FORWARD,
@@ -35,13 +45,13 @@ class WumpusWorld(gym.Env):
 
         """
         [
-          x_location (1-4), y_location (1-4), heading (0-N, 1-W, 2-S, 3-E),
+          x_location (1-width), y_location (1-height), heading (0-N, 1-W, 2-S, 3-E),
           stench, breeze, glitter, bump, scream (0, 1)
         ]
         """
         self.observation_space = spaces.Box(
             low=0,
-            high=5,
+            high=max(width, height),
             shape=(8,),
             dtype=np.int32
         )
@@ -65,28 +75,27 @@ class WumpusWorld(gym.Env):
         reward = self.agent.performance_measure - self.previous_score
 
         ########## SPECIAL CASE reward ##########
-        # TODO: Refactor hardcoded locations
-
         # Case 1 -> Agent has reached `Gold` location
         #   reward = +500
-        if self._location == (2, 3) and not self.gold_reward_given:
-            if action != ACTION_GRAB:
-                reward = 500
-                self.gold_reward_given = True
+        if self.modify_reward:
+            if self._location == self.gold and not self.gold_reward_given:
+                if action != ACTION_GRAB:
+                    reward = 500
+                    self.gold_reward_given = True
 
-        # Case 2 -> Agent has `Grabbed` the gold
-        #   reward = +500
-        if self._location == (2, 3) and not self.gold_grab_reward_given:
-            if action == ACTION_GRAB:
-                self.has_gold = True
-                self.gold_grab_reward_given = True
-                reward = 500
+            # Case 2 -> Agent has `Grabbed` the gold
+            #   reward = +500
+            if self._location == self.gold and not self.gold_grab_reward_given:
+                if action == ACTION_GRAB:
+                    self.has_gold = True
+                    self.gold_grab_reward_given = True
+                    reward = 500
 
-        # Case 3 -> Agent tries to `Climb` without gold
-        #    reward = -1000
-        if self._location == (1, 1):
-            if action == ACTION_CLIMB:  # Climb
-                reward = -1000  # Don't climb without gold :-)
+            # Case 3 -> Agent tries to `Climb` without gold
+            #    reward = -1000
+            if self._location == self.entrance:
+                if action == ACTION_CLIMB:  # Climb
+                    reward = -1000  # Don't climb without gold :-)
 
         self.previous_score = self.agent.performance_measure
 
@@ -112,16 +121,16 @@ class WumpusWorld(gym.Env):
             return wumpus_to_np_array(env_str)
 
     def _reset(self):
-        # TODO: Generalize this to take parameters from outside.
+        wumpus = [(Wumpus(), self.wumpus)]
+        pits = [(Pit(), pit) for pit in self.pits]
+        gold = [(Gold(), self.gold)]
+
         self.scenario = WumpusWorldScenario(
-            agent=Explorer(heading='north', verbose=False),
-            objects=[(Wumpus(), (1, 3)),
-                     (Pit(), (3, 3)),
-                     (Pit(), (3, 1)),
-                     (Gold(), (2, 3))],
-            width=4,
-            height=4,
-            entrance=(1, 1),
+            agent=Explorer(heading=self.heading, verbose=False),
+            objects=wumpus + pits + gold,
+            width=self.width,
+            height=self.height,
+            entrance=self.entrance,
             trace=False
         )
         self.previous_score = 0
