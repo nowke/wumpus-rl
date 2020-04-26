@@ -106,6 +106,7 @@ Run [`dqn/wumpus_dqn.py`](dqn/wumpus_dqn.py) file
 
 ```
 cd dqn
+./setup.sh
 python wumpus_dqn.py
 ```
 

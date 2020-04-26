@@ -53,14 +53,18 @@ def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
 class Agent():
     def __init__(self, lr, gamma, n_actions, epsilon, batch_size,
                  input_dims, epsilon_dec=1e-3, epsilon_end=0.01,
-                 mem_size=1000000, fname='dqn_model.h5', log_dir='logs'):
+                 mem_size=1000000, fname='dqn_model.h5',
+                 model_dir='models/dqn_model',
+                 ckpt_dir='models/dqn_model/checkpoints',
+                 log_dir='logs'):
         self.action_space = [i for i in range(n_actions)]
         self.gamma = gamma
         self.epsilon = epsilon
         self.eps_dec = epsilon_dec
         self.eps_min = epsilon_end
         self.batch_size = batch_size
-        self.model_file = fname
+        self.model_file = f'{model_dir}/{fname}'
+        self.checkpoint_dir = ckpt_dir
         self.memory = ReplayBuffer(mem_size, input_dims)
         self.q_eval = build_dqn(lr, n_actions, input_dims, 256, 256)
 
@@ -102,3 +106,9 @@ class Agent():
 
     def load_model(self):
         self.q_eval = load_model(self.model_file)
+
+    def save_checkpoint(self, id):
+        self.q_eval.save(f'{self.checkpoint_dir}/{id}.h5')
+
+    def load_checkpoint(self, id):
+        self.q_eval = load_model(f'{self.checkpoint_dir}/{id}.h5')
