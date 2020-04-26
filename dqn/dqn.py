@@ -40,16 +40,6 @@ class ReplayBuffer():
         return states, actions, rewards, states_, terminal
 
 
-def build_dqn(lr, n_actions, input_dims, fc1_dims, fc2_dims):
-    model = keras.Sequential([
-        keras.layers.Dense(fc1_dims, activation='relu'),
-        keras.layers.Dense(fc2_dims, activation='relu'),
-        keras.layers.Dense(n_actions, activation=None)])
-    model.compile(optimizer=Adam(learning_rate=lr), loss='mean_squared_error')
-
-    return model
-
-
 class Agent():
     def __init__(self, lr, gamma, n_actions, epsilon, batch_size,
                  input_dims, epsilon_dec=1e-3, epsilon_end=0.01,
@@ -66,7 +56,7 @@ class Agent():
         self.model_file = f'{model_dir}/{fname}'
         self.checkpoint_dir = ckpt_dir
         self.memory = ReplayBuffer(mem_size, input_dims)
-        self.q_eval = build_dqn(lr, n_actions, input_dims, 256, 256)
+        self.q_eval = self._get_model(lr, n_actions, input_dims, 256, 256)
 
     def store_transition(self, state, action, reward, new_state, done):
         self.memory.store_transition(state, action, reward, new_state, done)
@@ -112,3 +102,13 @@ class Agent():
 
     def load_checkpoint(self, id):
         self.q_eval = load_model(f'{self.checkpoint_dir}/{id}.h5')
+
+    def _get_model(self, lr, n_actions, input_dims, fc1_dims, fc2_dims):
+        model = keras.Sequential([
+            keras.layers.Dense(fc1_dims, activation='relu'),
+            keras.layers.Dense(fc2_dims, activation='relu'),
+            keras.layers.Dense(n_actions, activation=None)])
+        model.compile(optimizer=Adam(learning_rate=lr),
+                      loss='mean_squared_error')
+
+        return model

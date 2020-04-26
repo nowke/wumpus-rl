@@ -96,6 +96,10 @@ env = WumpusWorld()
 
 # You can use `env` object just as a regular `gym` environment
 env.render()
+
+# Pass `rgb_array` to the `render` method to get numpy array
+# of the rendered image --> this can be used to generate GIFs
+np_arr_img = env.render('rgb_array')
 ```
 
 ## Using DQN code
@@ -110,6 +114,12 @@ cd dqn
 python wumpus_dqn.py
 ```
 
+Run `clean.sh` to clear out the generated `logs`, `models`, and `tests`
+
+```sh
+./clean.sh
+```
+
 #### Hyperparameters
 
 Change the hyperparameters inside [`dqn/wumpus_dqn.py`](dqn/wumpus_dqn.py) file
@@ -118,9 +128,8 @@ Change the hyperparameters inside [`dqn/wumpus_dqn.py`](dqn/wumpus_dqn.py) file
 
 ...
 
-lr = 0.01
-n_games = 35000
-agent = Agent(gamma=0.95, epsilon=0.9, epsilon_dec=1e-6, lr=lr, 
+episodes = 35000
+agent = Agent(gamma=0.95, epsilon=0.9, epsilon_dec=1e-6, lr=0.01, 
             input_dims=env.observation_space.shape,
             n_actions=7, mem_size=1000000, batch_size=64,
             epsilon_end=0.01)
