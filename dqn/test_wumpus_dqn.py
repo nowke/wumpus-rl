@@ -7,13 +7,14 @@ from pathlib import Path
 from dqn import Agent
 from utils import create_gif
 
-MODEL_DIR = 'models/wumpus-v0-dqn'
-MODEL_FILE = 'wumpus-v0-dqn.h5'
-CHECKPOINTS_DIR = 'models/wumpus-v0-dqn/checkpoints'
-TEST_IMG_DIR = 'tests/wumpus-v0-dqn'
+ENV_NAME = 'wumpus-v0'
+MODEL_DIR = f'models/{ENV_NAME}-dqn'
+MODEL_FILE = f'{ENV_NAME}-dqn.h5'
+CHECKPOINTS_DIR = f'models/{ENV_NAME}-dqn/checkpoints'
+TEST_IMG_DIR = f'tests/{ENV_NAME}-dqn'
 
 if __name__ == '__main__':
-    env = gym.make('wumpus-v0')
+    env = gym.make(ENV_NAME)
     env.reset()
     checkpoints = list(Path(CHECKPOINTS_DIR).glob('*.h5'))
 
