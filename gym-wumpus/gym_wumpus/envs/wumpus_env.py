@@ -65,13 +65,19 @@ class WumpusWorld(gym.Env):
 
         action = self.actions[action]
 
-        if self.stochastic_action_prob < 1.0 and action == ACTION_FORWARD:
-            if np.random.random() > self.stochastic_action_prob:
-                # End up left or right with 50% probability
-                new_cell_dir = np.random.choice([
-                    ACTION_TURN_RIGHT, ACITON_TURN_LEFT
-                ])
-                self.env.execute_action(self.agent, new_cell_dir)
+        if self.stochastic_action_prob < 1.0:
+            if action == ACTION_FORWARD:
+                if np.random.random() > self.stochastic_action_prob:
+                    # End up left or right with 50% probability
+                    new_cell_dir = np.random.choice([
+                        ACTION_TURN_RIGHT, ACITON_TURN_LEFT
+                    ])
+                    self.env.execute_action(self.agent, new_cell_dir)
+
+            if action == ACTION_GRAB:
+                if np.random.random() > self.stochastic_action_prob:
+                    # End up not grabbing the gold
+                    action = ACTION_WAIT
 
 
         # Execute the action in the environment
