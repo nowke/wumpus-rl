@@ -21,7 +21,7 @@ class WumpusWorld(gym.Env):
 
     def __init__(self, width=4, height=4, entrance=(1, 1), heading='north',
                  wumpus=(1, 3), pits=((3, 3), (3, 1)), gold=(2, 3),
-                 modify_reward=True):
+                 modify_reward=True, stochastic_action_prob=1.0):
         self.width = width
         self.height = height
         self.entrance = entrance
@@ -30,6 +30,7 @@ class WumpusWorld(gym.Env):
         self.pits = pits
         self.gold = gold
         self.modify_reward = modify_reward
+        self.stochastic_action_prob = stochastic_action_prob
 
         self._reset()
         self.actions = [
@@ -63,6 +64,15 @@ class WumpusWorld(gym.Env):
             action = 6  # Wait
 
         action = self.actions[action]
+
+        if self.stochastic_action_prob < 1.0 and action == ACTION_FORWARD:
+            if np.random.random() > self.stochastic_action_prob:
+                # End up left or right with 50% probability
+                new_cell_dir = np.random.choice([
+                    ACTION_TURN_RIGHT, ACITON_TURN_LEFT
+                ])
+                self.env.execute_action(self.agent, new_cell_dir)
+
 
         # Execute the action in the environment
         self.env.execute_action(self.agent, action)
@@ -99,12 +109,21 @@ class WumpusWorld(gym.Env):
 
         self.previous_score = self.agent.performance_measure
 
-        # The game is over with 4 conditions
-        #   (1) Agent gets killed by wumpus
-        #   (2) Agent falls into a pit
-        #   (3) Time step is 50  (to limit infinite loops)
-        #   (4) Agent has grabbed the gold
-        done = self.env.is_done() or self.env.time_step == 50 or self.has_gold
+        if self.modify_reward:
+            # The game is over with 4 conditions
+            #   (1) Agent gets killed by wumpus
+            #   (2) Agent falls into a pit
+            #   (3) Time step is 50  (to limit infinite loops)
+            #   (4) Agent has grabbed the gold
+            done = self.env.is_done() or self.env.time_step == 50 or self.has_gold
+        else:
+            # The game is over with 4 conditions
+            #   (1) Agent gets killed by wumpus
+            #   (2) Agent falls into a pit
+            #   (3) Time step is 1000  (to limit infinite loops)
+            #   (4) Agent has grabbed the gold, return to entrance
+            #       and climbed from entrance
+            done = self.env.is_done() or self.env.time_step == 1000
 
         observation = self._state
         return observation, reward, done, {}
