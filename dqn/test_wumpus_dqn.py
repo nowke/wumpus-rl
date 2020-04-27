@@ -20,21 +20,23 @@ if __name__ == '__main__':
 
     for checkpoint in checkpoints:
         ep_id = checkpoint.stem
-        agent = Agent(gamma=0.95, epsilon=0.0, epsilon_dec=0, lr=0.01,
-                      input_dims=env.observation_space.shape,
-                      n_actions=7, mem_size=1000000, batch_size=64,
-                      epsilon_end=0.0, fname=MODEL_FILE, model_dir=MODEL_DIR,
+        agent = Agent(learning_rate=0.01, gamma=0.95,
+                      state_shape=env.observation_space.shape, actions=7,
+                      batch_size=64,
+                      epsilon_initial=0.0, epsilon_decay=0, epsilon_final=0.0,
+                      replay_buffer_capacity=1000000,
+                      model_name=MODEL_FILE, model_dir=MODEL_DIR,
                       ckpt_dir=CHECKPOINTS_DIR)
         agent.load_checkpoint(ep_id)
 
         done = False
         score = 0
         steps_per_episode = 0
-        observation = env.reset()
+        state = env.reset()
         images = [env.render('rgb_array')]
         while not done:
-            action = agent.choose_action(observation)
-            observation, reward, done, info = env.step(action)
+            action = agent.select_action(state)
+            state, reward, done, _ = env.step(action)
             score += reward
             steps_per_episode += 1
             images.append(env.render('rgb_array'))

@@ -7,6 +7,11 @@ import tensorflow as tf
 
 class ReplayMemory():
     def __init__(self, capacity, observation_shape):
+        """
+        Cyclic buffer with fixed `capacity` holding the transition
+        tupple <s, a, r, s', done>. Use this for sampling of specified
+        batch size during "Experience Replay"
+        """
         self.capacity = capacity
         self.dim = observation_shape
         self.current_size = 0
