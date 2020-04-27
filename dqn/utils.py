@@ -5,7 +5,7 @@ import gym
 import tensorflow as tf
 
 
-def write_summaries(summary_writer, values, step):
+def write_summaries(summary_writer, values, step, env_name):
     descriptions = {
         'epsilon': 'Exploration probability',
         'reward.episode': 'Score for the episode',
@@ -17,7 +17,7 @@ def write_summaries(summary_writer, values, step):
     with summary_writer.as_default():
         for metric, value in values.items():
             tf.summary.scalar(
-                f'Wumpus-v0/{metric}',
+                f'{env_name}/{metric}',
                 value,
                 step=step,
                 description=descriptions[metric]

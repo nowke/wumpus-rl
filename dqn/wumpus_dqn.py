@@ -7,17 +7,19 @@ import tensorflow as tf
 from dqn import Agent
 from utils import write_summaries
 
+ENV_NAME = 'wumpus-v0'
+
 SAVE_INTERVAL = 100
 CHECKPOINT_INTERVAL = 2000
-MODEL_DIR = 'models/wumpus-v0-dqn'
-MODEL_FILE = 'wumpus-v0-dqn.h5'
-CHECKPOINTS_DIR = 'models/wumpus-v0-dqn/checkpoints'
+MODEL_DIR = f'models/{ENV_NAME}-dqn'
+MODEL_FILE = f'{ENV_NAME}-dqn.h5'
+CHECKPOINTS_DIR = f'models/{ENV_NAME}-dqn/checkpoints'
 RUN_ID = datetime.now().strftime("%Y%m%d-%H%M%S")
 LOG_DIR = f'logs/{RUN_ID}'
 
 
 if __name__ == '__main__':
-    env = gym.make('wumpus-v0')
+    env = gym.make(ENV_NAME)
     episodes = 35000
     summary_writer = tf.summary.create_file_writer(LOG_DIR)
     agent = Agent(gamma=0.95, epsilon=0.9, epsilon_dec=1e-6, lr=0.01,
@@ -57,7 +59,7 @@ if __name__ == '__main__':
             'reward.min': min_score,
             'reward.max': max_score,
             'steps.count': steps_per_episode
-        }, i)
+        }, i, ENV_NAME)
 
         # Save the model
         if i % SAVE_INTERVAL == 0:
