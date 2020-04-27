@@ -79,7 +79,6 @@ class WumpusWorld(gym.Env):
                     # End up not grabbing the gold
                     action = ACTION_WAIT
 
-
         # Execute the action in the environment
         self.env.execute_action(self.agent, action)
         self.env.time_step += 1
