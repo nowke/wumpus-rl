@@ -1,2 +1,2 @@
-mkdir -p models/wumpus-v0-dqn/checkpoints
-mkdir -p tests/wumpus-v0-dqn/
+mkdir -p models/$1-dqn/checkpoints
+mkdir -p tests/$1-dqn/

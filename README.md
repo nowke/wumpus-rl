@@ -106,11 +106,13 @@ np_arr_img = env.render('rgb_array')
 
 #### Running code
 
-Run [`dqn/wumpus_dqn.py`](dqn/wumpus_dqn.py) file
+* Run [`dqn/wumpus_dqn.py`](dqn/wumpus_dqn.py) file, 
+* Give `env_id` (example, `wumpus-v0`) to `setup.sh` file
+* Set `ENV_NAME` variable in `wumpus_dqn.py`
 
 ```
 cd dqn
-./setup.sh
+./setup.sh wumpus-v0
 python wumpus_dqn.py
 ```
 
