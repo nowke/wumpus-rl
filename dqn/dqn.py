@@ -5,7 +5,9 @@ from tensorflow import keras
 from utils import ReplayMemory
 
 
-class Agent():
+class Agent:
+    """DQN Agent class for training a OpenAI-gym environment
+    """
     def __init__(self, learning_rate, gamma, state_shape, actions, batch_size,
                  epsilon_initial=0.9,
                  epsilon_decay=1e-3,
@@ -15,6 +17,24 @@ class Agent():
                  model_dir='models/dqn_model',
                  ckpt_dir='models/dqn_model/checkpoints',
                  log_dir='logs'):
+        """Initialize DQN agent
+
+        Args:
+            learning_rate (float): Optimizer learning rate
+            gamma (float): Discount factor in Bellman equation
+            state_shape (np.shape): Shape of state space of the environment
+            actions (int): Number of actions
+            batch_size (int): Size of batch from which agent would learn
+            epsilon_initial (float): Initial value of epsilon
+            epsilon_decay (float): Decay rate of epsilon
+            epsilon_final (float): Final value of epsilon after complete decay
+            replay_buffer_capacity (int): Maximum size of experience replay
+                                          buffer
+            model_name (str): Name of the model file to save/load
+            model_dir (str): Directory in which model file is stored
+            ckpt_dir (str): Model Checkpoint directory
+            log_dir (str): Directory where tensorflow logs are stored
+        """
         self.learning_rate = learning_rate
         self.gamma = gamma
         self.actions = actions
@@ -29,7 +49,11 @@ class Agent():
         self.checkpoint_dir = ckpt_dir
 
     def select_action(self, state):
-        """Select action according to epsilon greedy policy"""
+        """Select action according to epsilon greedy policy
+        
+        Args:
+            state (list|np.array): Current state of the environment
+        """
         if np.random.random() < self.epsilon:
             return np.random.choice(range(self.actions))
         else:

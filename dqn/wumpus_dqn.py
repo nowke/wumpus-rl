@@ -10,15 +10,17 @@ from utils import write_summaries
 ENV_NAME = 'wumpus-v0'
 
 EPISODES = 35000
-SAVE_INTERVAL = 100
-CHECKPOINT_INTERVAL = 2000
+SAVE_INTERVAL = 10
+CHECKPOINT_INTERVAL = 20
 MODEL_DIR = f'models/{ENV_NAME}-dqn'
 MODEL_FILE = f'{ENV_NAME}-dqn.h5'
 CHECKPOINTS_DIR = f'models/{ENV_NAME}-dqn/checkpoints'
 RUN_ID = datetime.now().strftime("%Y%m%d-%H%M%S")
 LOG_DIR = f'logs/{RUN_ID}'
 
-if __name__ == '__main__':
+
+def main():
+    # Initialize environment, agent
     env = gym.make(ENV_NAME)
     summary_writer = tf.summary.create_file_writer(LOG_DIR)
     agent = Agent(learning_rate=0.01, gamma=0.95,
@@ -35,10 +37,15 @@ if __name__ == '__main__':
         score = 0
         state = env.reset()
         steps_per_episode = 0
+
+        # Play one episode
         while not done:
+            # Choose action (epsilon greedy), and execute
             action = agent.select_action(state)
             next_state, reward, done, _ = env.step(action)
             score += reward
+
+            # Store in experience replay buffer
             agent.store_experience(state, action,
                                    reward, next_state, done)
             state = next_state
@@ -53,6 +60,7 @@ if __name__ == '__main__':
         print(
             f'Episode: {i}, Score {score:.2f}, Avg_score {avg_score:.2f}, Epsilon {agent.epsilon:.2f}')
 
+        # Summaries for Tensorboard
         write_summaries(summary_writer, {
             'epsilon': agent.epsilon,
             'reward.episode': score,
@@ -71,3 +79,7 @@ if __name__ == '__main__':
         if i % CHECKPOINT_INTERVAL == 0:
             print(f'Adding checkpoint: \'{CHECKPOINTS_DIR}/episode-{i}.h5\'')
             agent.save_checkpoint(f'episode-{i}')
+
+
+if __name__ == '__main__':
+    main()

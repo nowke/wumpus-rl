@@ -13,7 +13,8 @@ MODEL_FILE = f'{ENV_NAME}-dqn.h5'
 CHECKPOINTS_DIR = f'models/{ENV_NAME}-dqn/checkpoints'
 TEST_IMG_DIR = f'tests/{ENV_NAME}-dqn'
 
-if __name__ == '__main__':
+
+def main():
     env = gym.make(ENV_NAME)
     env.reset()
     checkpoints = list(Path(CHECKPOINTS_DIR).glob('*.h5'))
@@ -35,12 +36,15 @@ if __name__ == '__main__':
         state = env.reset()
         images = [env.render('rgb_array')]
         while not done:
+            # Choose action according to policy, and execute
             action = agent.select_action(state)
             state, reward, done, _ = env.step(action)
+
             score += reward
             steps_per_episode += 1
             images.append(env.render('rgb_array'))
 
+        # Generate GIF for the execution
         create_gif(
             f'{TEST_IMG_DIR}/{ep_id}.gif',
             np.array(images),
@@ -49,3 +53,7 @@ if __name__ == '__main__':
 
         print(
             f'Model \'{str(checkpoint)}\', score {score}, steps {steps_per_episode}')
+
+
+if __name__ == '__main__':
+    main()
