@@ -1,114 +1,115 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.models import load_model
+
+from utils import ReplayMemory
 
 
-class ReplayBuffer():
-    def __init__(self, max_size, input_dims):
-        self.mem_size = max_size
-        self.mem_cntr = 0
-
-        self.state_memory = np.zeros((self.mem_size, *input_dims),
-                                     dtype=np.float32)
-        self.new_state_memory = np.zeros((self.mem_size, *input_dims),
-                                         dtype=np.float32)
-        self.action_memory = np.zeros(self.mem_size, dtype=np.int32)
-        self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
-        self.terminal_memory = np.zeros(self.mem_size, dtype=np.int32)
-
-    def store_transition(self, state, action, reward, state_, done):
-        index = self.mem_cntr % self.mem_size
-        self.state_memory[index] = state
-        self.new_state_memory[index] = state_
-        self.reward_memory[index] = reward
-        self.action_memory[index] = action
-        self.terminal_memory[index] = 1 - int(done)
-        self.mem_cntr += 1
-
-    def sample_buffer(self, batch_size):
-        max_mem = min(self.mem_cntr, self.mem_size)
-        batch = np.random.choice(max_mem, batch_size, replace=False)
-
-        states = self.state_memory[batch]
-        states_ = self.new_state_memory[batch]
-        rewards = self.reward_memory[batch]
-        actions = self.action_memory[batch]
-        terminal = self.terminal_memory[batch]
-
-        return states, actions, rewards, states_, terminal
-
-
-class Agent():
-    def __init__(self, lr, gamma, n_actions, epsilon, batch_size,
-                 input_dims, epsilon_dec=1e-3, epsilon_end=0.01,
-                 mem_size=1000000, fname='dqn_model.h5',
+class Agent:
+    """DQN Agent class for training a OpenAI-gym environment
+    """
+    def __init__(self, learning_rate, gamma, state_shape, actions, batch_size,
+                 epsilon_initial=0.9,
+                 epsilon_decay=1e-3,
+                 epsilon_final=0.01,
+                 replay_buffer_capacity=1000000,
+                 model_name='dqn_model.h5',
                  model_dir='models/dqn_model',
                  ckpt_dir='models/dqn_model/checkpoints',
                  log_dir='logs'):
-        self.action_space = [i for i in range(n_actions)]
+        """Initialize DQN agent
+
+        Args:
+            learning_rate (float): Optimizer learning rate
+            gamma (float): Discount factor in Bellman equation
+            state_shape (np.shape): Shape of state space of the environment
+            actions (int): Number of actions
+            batch_size (int): Size of batch from which agent would learn
+            epsilon_initial (float): Initial value of epsilon
+            epsilon_decay (float): Decay rate of epsilon
+            epsilon_final (float): Final value of epsilon after complete decay
+            replay_buffer_capacity (int): Maximum size of experience replay
+                                          buffer
+            model_name (str): Name of the model file to save/load
+            model_dir (str): Directory in which model file is stored
+            ckpt_dir (str): Model Checkpoint directory
+            log_dir (str): Directory where tensorflow logs are stored
+        """
+        self.learning_rate = learning_rate
         self.gamma = gamma
-        self.epsilon = epsilon
-        self.eps_dec = epsilon_dec
-        self.eps_min = epsilon_end
+        self.actions = actions
         self.batch_size = batch_size
-        self.model_file = f'{model_dir}/{fname}'
+        self.epsilon = epsilon_initial
+        self.epsilon_decay = epsilon_decay
+        self.epsilon_final = epsilon_final
+        self.buffer = ReplayMemory(replay_buffer_capacity, state_shape)
+        self.q_network = self._get_model()
+
+        self.model_file = f'{model_dir}/{model_name}'
         self.checkpoint_dir = ckpt_dir
-        self.memory = ReplayBuffer(mem_size, input_dims)
-        self.q_eval = self._get_model(lr, n_actions, input_dims, 256, 256)
 
-    def store_transition(self, state, action, reward, new_state, done):
-        self.memory.store_transition(state, action, reward, new_state, done)
-
-    def choose_action(self, observation):
+    def select_action(self, state):
+        """Select action according to epsilon greedy policy
+        
+        Args:
+            state (list|np.array): Current state of the environment
+        """
         if np.random.random() < self.epsilon:
-            action = np.random.choice(self.action_space)
+            return np.random.choice(range(self.actions))
         else:
-            state = np.array([observation])
-            actions = self.q_eval.predict(state)
-            action = np.argmax(actions)
-        return action
+            return np.argmax(self.q_network.predict(np.array([state])))
 
-    def learn(self):
-        if self.memory.mem_cntr < self.batch_size:
-            return
+    def train(self):
+        """Optimize the model for the current batch"""
+        if self.buffer.current_size >= self.batch_size:
+            states, actions, rewards, next_states, dones = self.buffer.sample(
+                self.batch_size)
 
-        states, actions, rewards, states_, dones = \
-            self.memory.sample_buffer(self.batch_size)
+            q_target = np.copy(self.q_network.predict(states))   # Q*(s,a)
+            q_values_next = self.q_network.predict(next_states)  # Q*(s',a')
 
-        q_eval = self.q_eval.predict(states)
-        q_next = self.q_eval.predict(states_)
+            batch = np.arange(self.batch_size, dtype=np.int32)
 
-        q_target = np.copy(q_eval)
-        batch_index = np.arange(self.batch_size, dtype=np.int32)
+            # Bellman equation update
+            q_target[batch, actions] = rewards + (self.gamma *
+                                                  np.max(q_values_next, axis=1) * dones)
 
-        q_target[batch_index, actions] = rewards + \
-            self.gamma * np.max(q_next, axis=1)*dones
+            # Train using fixed q-targets
+            self.q_network.train_on_batch(states, q_target)
 
-        self.q_eval.train_on_batch(states, q_target)
+            # Update epsilon
+            if self.epsilon > self.epsilon_final:
+                self.epsilon -= self.epsilon_decay
+            else:
+                self.epsilon = self.epsilon_final
 
-        self.epsilon = self.epsilon - self.eps_dec if self.epsilon > \
-            self.eps_min else self.eps_min
+    def store_experience(self, state, action, reward, next_state, done):
+        """Store tuple <s, a, r, s', done> to the buffer"""
+        self.buffer.store(state, action, reward, next_state, done)
 
     def save_model(self):
-        self.q_eval.save(self.model_file)
+        self.q_network.save(self.model_file)
 
     def load_model(self):
-        self.q_eval = load_model(self.model_file)
+        self.q_network = keras.models.load_model(self.model_file)
 
     def save_checkpoint(self, id):
-        self.q_eval.save(f'{self.checkpoint_dir}/{id}.h5')
+        self.q_network.save(f'{self.checkpoint_dir}/{id}.h5')
 
     def load_checkpoint(self, id):
-        self.q_eval = load_model(f'{self.checkpoint_dir}/{id}.h5')
+        self.q_network = keras.models.load_model(
+            f'{self.checkpoint_dir}/{id}.h5')
 
-    def _get_model(self, lr, n_actions, input_dims, fc1_dims, fc2_dims):
+    def _get_model(self):
+        # 2 hidden layers, 1 FC layer
         model = keras.Sequential([
-            keras.layers.Dense(fc1_dims, activation='relu'),
-            keras.layers.Dense(fc2_dims, activation='relu'),
-            keras.layers.Dense(n_actions, activation=None)])
-        model.compile(optimizer=Adam(learning_rate=lr),
-                      loss='mean_squared_error')
+            keras.layers.Dense(256, activation='relu'),
+            keras.layers.Dense(256, activation='relu'),
+            keras.layers.Dense(self.actions, activation=None)
+        ])
+
+        # Use Adam optimizer
+        optimizer = keras.optimizers.Adam(learning_rate=self.learning_rate)
+        model.compile(optimizer=optimizer, loss='mean_squared_error')
 
         return model
