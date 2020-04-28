@@ -1,5 +1,11 @@
 # Wumpus RL
 
+The codebase consists of 2 parts:
+
+1. Wumpus World environment ([gym-wumpus/](gym-wumpus/)) - compatible with [OpenAI Gym](https://gym.openai.com/)
+    > This wraps around Code from [Project 3: Using Logic to Hunt the Wumpus](http://www.sista.arizona.edu/~clayton/courses/ai/projects/wumpus/)
+2. DQN algorithm([dqn/](dqn/)) - for training Wumpus world environment
+
 ## Setup Python Environment
 
 #### Create new environment with Python 3.7
@@ -103,6 +109,13 @@ np_arr_img = env.render('rgb_array')
 ```
 
 ## Using DQN code
+
+#### Files
+
+* [`dqn/dqn.py`](dqn/dqn.py) - DQN Agent code
+* [`dqn/utils.py`](dqn/utils.py) - Utility functions
+* [`dqn/wumpus_dqn.py`](dqn/wumpus_dqn.py) - Training code for Wumpus world environment using DQN
+* [`dqn/test_wumpus_dqn.py`](dqn/test_wumpus_dqn.py) - Testing code for Wumpus world environment with DQN, generates GIFs using checkpoints
 
 #### Running code
 

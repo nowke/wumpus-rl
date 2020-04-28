@@ -10,8 +10,8 @@ from utils import write_summaries
 ENV_NAME = 'wumpus-v0'
 
 EPISODES = 35000
-SAVE_INTERVAL = 10
-CHECKPOINT_INTERVAL = 20
+SAVE_INTERVAL = 100
+CHECKPOINT_INTERVAL = 2000
 MODEL_DIR = f'models/{ENV_NAME}-dqn'
 MODEL_FILE = f'{ENV_NAME}-dqn.h5'
 CHECKPOINTS_DIR = f'models/{ENV_NAME}-dqn/checkpoints'
