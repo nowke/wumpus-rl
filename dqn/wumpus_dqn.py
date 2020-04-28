@@ -51,11 +51,13 @@ def main():
             state = next_state
             agent.train()
             steps_per_episode += 1
+        if len(scores) == 100:
+            scores.pop(0)
         scores.append(score)
 
-        avg_score = np.mean(scores[-100:])
-        min_score = np.min(scores[-100:])
-        max_score = np.max(scores[-100:])
+        avg_score = np.mean(scores)
+        min_score = np.min(scores)
+        max_score = np.max(scores)
 
         print(
             f'Episode: {i}, Score {score:.2f}, Avg_score {avg_score:.2f}, Epsilon {agent.epsilon:.2f}')
