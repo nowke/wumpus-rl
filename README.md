@@ -143,12 +143,101 @@ Change the hyperparameters inside [`dqn/wumpus_dqn.py`](dqn/wumpus_dqn.py) file
 
 ...
 
-episodes = 35000
-agent = Agent(gamma=0.95, epsilon=0.9, epsilon_dec=1e-6, lr=0.01, 
-            input_dims=env.observation_space.shape,
-            n_actions=7, mem_size=1000000, batch_size=64,
-            epsilon_end=0.01)
+EPISODES = 35000
+...
+
+agent = Agent(learning_rate=0.01, gamma=0.95,
+              state_shape=env.observation_space.shape, actions=7,
+              batch_size=64,
+              epsilon_initial=0.9, epsilon_decay=1e-6, epsilon_final=0.01,
+              replay_buffer_capacity=1000000,
+              ...)
 
 ...
 
 ```
+
+#### Testing an existing model
+
+Test any environment using the pretrained existing models. Run `python test_wumpus_dqn.py <env_name>`. For example,
+
+```sh
+python test_wumpus.py wumpus-noise-v0
+```
+
+#### List of environments
+
+| Environment                  | Noise (%) | Modified reward function (?) | Grid # |
+|------------------------------|-----------|------------------------------|--------|
+| `wumpus-v0`                  | 0         | Yes                          | 1      |
+| `wumpus-nr-v0`               | 0         | No                           | 1      |
+| `wumpus-noise2-v0`           | 10        | Yes                          | 1      |
+| `wumpus-nr-noise2-v0`        | 10        | No                           | 1      |
+| `wumpus-noise-v0`            | 20        | Yes                          | 1      |
+| `wumpus-nr-noise-v0`         | 20        | No                           | 1      |
+| `wumpus-l4x4_1-v0`           | 0         | Yes                          | 2      |
+| `wumpus-l4x4_1-nr-v0`        | 0         | No                           | 2      |
+| `wumpus-l4x4_1-noise2-v0`    | 10        | Yes                          | 2      |
+| `wumpus-l4x4_1-nr-noise2-v0` | 10        | No                           | 2      |
+| `wumpus-l4x4_1-noise-v0`     | 20        | Yes                          | 2      |
+| `wumpus-l4x4_1-nr-noise-v0`  | 20        | No                           | 2      |
+| `wumpus-l4x4_2-v0`           | 0         | Yes                          | 3      |
+| `wumpus-l4x4_2-nr-v0`        | 0         | No                           | 3      |
+| `wumpus-l4x4_2-noise2-v0`    | 10        | Yes                          | 3      |
+| `wumpus-l4x4_2-nr-noise2-v0` | 10        | No                           | 3      |
+| `wumpus-l4x4_2-noise-v0`     | 20        | Yes                          | 3      |
+| `wumpus-l4x4_2-nr-noise-v0`  | 20        | No                           | 3      |
+| `wumpus-l5x5_1-v0`           | 0         | Yes                          | 4      |
+| `wumpus-l5x5_1-nr-v0`        | 0         | No                           | 4      |
+| `wumpus-l5x5_1-noise2-v0`    | 10        | Yes                          | 4      |
+| `wumpus-l5x5_1-nr-noise2-v0` | 10        | No                           | 4      |
+| `wumpus-l5x5_1-noise-v0`     | 20        | Yes                          | 4      |
+| `wumpus-l5x5_1-nr-noise-v0`  | 20        | No                           | 4      |
+
+```
+       GRID #1                            GRID #2
+  0   1   2   3   4   5            0   1   2   3   4   5
+|---|---|---|---|---|---|        |---|---|---|---|---|---|
+| # | # | # | # | # | # | 5      | # | # | # | # | # | # | 5
+|---|---|---|---|---|---|        |---|---|---|---|---|---|
+| # |   |   |   |   | # | 4      | # |   |   |   |   | # | 4
+|---|---|---|---|---|---|        |---|---|---|---|---|---|
+| # | W | G | P |   | # | 3      | # | W | G |   |   | # | 3
+|---|---|---|---|---|---|        |---|---|---|---|---|---|
+| # |   |   |   |   | # | 2      | # |   | P |   |   | # | 2
+|---|---|---|---|---|---|        |---|---|---|---|---|---|
+| # | ^ |   | P |   | # | 1      | # | ^ |   | P |   | # | 1
+|---|---|---|---|---|---|        |---|---|---|---|---|---|
+| # | # | # | # | # | # | 0      | # | # | # | # | # | # | 0
+|---|---|---|---|---|---|        |---|---|---|---|---|---|
+
+       GRID #3                           GRID #4
+
+  0   1   2   3   4   5          0   1   2   3   4   5   6
+|---|---|---|---|---|---|        |---|---|---|---|---|---|---|
+| # | # | # | # | # | # | 5      | # | # | # | # | # | # | # | 6  
+|---|---|---|---|---|---|        |---|---|---|---|---|---|---|
+| # |   |   | W | G | # | 4      | # |   | G |   |   |   | # | 5  
+|---|---|---|---|---|---|        |---|---|---|---|---|---|---|
+| # |   |   | P |   | # | 3      | # |   |   | W |   |   | # | 4
+|---|---|---|---|---|---|        |---|---|---|---|---|---|---|
+| # |   |   |   |   | # | 2      | # |   |   | P |   |   | # | 3  
+|---|---|---|---|---|---|        |---|---|---|---|---|---|---|
+| # | ^ |   |   | P | # | 1      | # |   |   |   |   |   | # | 2  
+|---|---|---|---|---|---|        |---|---|---|---|---|---|---|
+| # | # | # | # | # | # | 0      | # | ^ |   |   | P |   | # | 1  
+|---|---|---|---|---|---|        |---|---|---|---|---|---|---|
+                                 | # | # | # | # | # | # | # | 0
+                                 |---|---|---|---|---|---|---|  
+```
+
+#### Tensorboard
+
+During training, logs are generated in `dqn/logs/` folder. To view the Tensorboard, run the below command
+
+```sh
+tensorboard --logdir dqn/logs/
+```
+
+![Tensorboard screenshot 1](assets/tensorboard_screen_1.png)
+![Tensorboard screenshot 2](assets/tensorboard_screen_2.png)
